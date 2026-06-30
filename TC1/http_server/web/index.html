@@ -54,15 +54,17 @@
             <!--                <li class="mdl-menu__item" onclick="ChangeLanguage('cn')">中文</li>-->
             <!--                <li class="mdl-menu__item" onclick="ChangeLanguage('jp')">日本語</li>-->
             <!--            </ul>-->
-            <button onclick="reboot()"
-                    class="mdl-button  mdl-button--icon"
-                    id="rebootbtn">
+            <button class="mdl-button mdl-button--icon" id="rebootbtn">
                 <i class="material-icons">
                     <svg>
                         <use xlink:href="#icon-reboot"/>
                     </svg>
                 </i>
             </button>
+            <ul class="mdl-menu mdl-js-menu mdl-js-ripple-effect mdl-menu--bottom-right" for="rebootbtn">
+                <li class="mdl-menu__item" onclick="softReboot()">软重启</li>
+                <li class="mdl-menu__item" onclick="reboot()">硬重启</li>
+            </ul>
         </div>
     </header>
     <div class="demo-drawer mdl-layout__drawer mdl-color--blue-grey-900 mdl-color-text--blue-grey-50">
@@ -963,6 +965,7 @@
     BTN_OPERATIONS.push("重置系统");
     BTN_OPERATIONS.push("切换童锁");
     BTN_OPERATIONS.push("重启网页");
+    BTN_OPERATIONS.push("系统软重启");
 
       $('#btn_action_selector').append(
       $('<li>')
@@ -1578,17 +1581,31 @@ xhr.send(fileInput.files[0]);
     GetReportFreq();
 
     function reboot(){
-    var r=confirm("确定要重启吗？");
-    if (r==true)
-    {
-        setRebootSystem();
+        var r=confirm("确定要进行硬重启吗？");
+        if (r==true)
+        {
+            setRebootSystem();
+        }
     }
+    
+    function softReboot(){
+        var r=confirm("确定要进行软重启吗？");
+        if (r==true)
+        {
+            setSoftRebootSystem();
+        }
     }
 
     function setRebootSystem() {
       HttpPost("/reboot", function (re) {
-        ShowToast("已重启");
+        ShowToast("已执行硬重启");
       }, "000");
+    }
+
+    function setSoftRebootSystem() {
+      HttpPost("/reboot", function (re) {
+        ShowToast("已执行软重启");
+      }, "soft");
     }
 
     function setReportFreq(seconds) {

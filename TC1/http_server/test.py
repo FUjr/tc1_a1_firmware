@@ -11,6 +11,8 @@ try:
 except:
     io = __import__("StringIO").StringIO
 
+
+lines = []
 def gen(dat, fn):
     try:
         s = ','.join(["0x%02x" % c for c in dat])
@@ -21,6 +23,7 @@ def gen(dat, fn):
 
     fn = re.sub(r"[^\w]", "_", fn)
     print("const unsigned char %s[0x%x] = {\n%s};" % (fn, len(dat), s))
+    lines.append("const unsigned char %s[0x%x] = {\n%s};" % (fn, len(dat), s))
 
 def gz_gen(s, fn):
     dat = io()
@@ -28,6 +31,8 @@ def gz_gen(s, fn):
         f.write(s)
     dat = dat.getvalue()
     gen(dat, fn)
+    lines.append("")
+    lines.append("const unsigned int %s_len = 0x%x;" % (fn, len(dat)))
 
 def pack(path, name):
     s = b''
@@ -40,7 +45,12 @@ pack('web/*.js', 'js_pack')
 pack('web/*.css', 'css_pack')
 
 for fn in glob.glob('web/*.html'):
-    gz_gen(open(fn, 'rb').read(), fn)
+    gz_gen(open(fn, 'rb').read(), "web_index_html")
 
 for fn in glob.glob('web/*.woff2'):
-    gen(open(fn, 'rb').read(), fn)
+    gen(open(fn, 'rb').read(), os.path.basename(fn).replace('.', '_'))
+
+#output web_data.c
+with open('web_data.c', 'w') as f:
+    f.write("\n".join(lines))
+    f.write("\n")
