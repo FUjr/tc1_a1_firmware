@@ -13,7 +13,7 @@
 #include "http_server/app_httpd.h"
 #include "timed_task/timed_task.h"
 
-char rtc_init = 0; //sntp校时成功标志位
+char rtc_init = 0; //sntp鏍℃椂鎴愬姛鏍囧織浣?
 uint32_t total_time = 0;
 char str_mac[16] = {0};
 int last_check_day = 0;
@@ -28,7 +28,7 @@ mico_gpio_t Relay[Relay_NUM] = {Relay_0, Relay_1, Relay_2, Relay_3, Relay_4, Rel
 void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
     UNUSED_PARAMETER(size);
 
-    mico_system_context_get()->micoSystemConfig.name[0] = 1; //在下次重启时使用默认名称
+    mico_system_context_get()->micoSystemConfig.name[0] = 1; //鍦ㄤ笅娆￠噸鍚椂浣跨敤榛樿鍚嶇О
     mico_system_context_get()->micoSystemConfig.name[1] = 0;
 
     user_config_t *userConfigDefault = user_config_data;
@@ -47,7 +47,7 @@ void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
     set_key_map(userConfigDefault->user,1, SWITCH_ALL_SOCKETS, NO_FUNCTION);
     for (int i = 2; i < 32; i++) {
         int longFunc = NO_FUNCTION;
-        //出厂设置，长按5秒开启配网模式，长按10秒恢复出厂设置
+        //鍑哄巶璁剧疆锛岄暱鎸?绉掑紑鍚厤缃戞ā寮忥紝闀挎寜10绉掓仮澶嶅嚭鍘傝缃?
         if (i >=5 && i< 10) {
             longFunc = CONFIG_WIFI;
         } else if (i >= 10 && i< 15) {
@@ -58,7 +58,7 @@ void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
 
     for (int i = 0; i < SOCKET_NUM; i++) {
         userConfigDefault->socket_status[i] = 1;
-        snprintf(userConfigDefault->socket_names[i], SOCKET_NAME_LENGTH, "插座-%d", i + 1);
+        snprintf(userConfigDefault->socket_names[i], SOCKET_NAME_LENGTH, "鎻掑骇-%d", i + 1);
     }
     for (int i = 0; i < MAX_TASK_NUM; i++) {
         userConfigDefault->timed_tasks[i].on_use = false;
@@ -67,27 +67,27 @@ void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
 }
 
 void recordDailyPCount() {
-    // 获取当前时间
+    // 鑾峰彇褰撳墠鏃堕棿
     mico_utc_time_t utc_time;
     mico_time_get_utc_time(&utc_time);
     utc_time += 28800;
     struct tm *current_time = localtime((const time_t *) &utc_time);
-    // 判断上次检查的时间与当前时间的日期是否不同
+    // 鍒ゆ柇涓婃妫€鏌ョ殑鏃堕棿涓庡綋鍓嶆椂闂寸殑鏃ユ湡鏄惁涓嶅悓
     if (last_check_day != 0) {
-        // 如果日期发生变化（即跨天了），则进行记录
+        // 濡傛灉鏃ユ湡鍙戠敓鍙樺寲锛堝嵆璺ㄥぉ浜嗭級锛屽垯杩涜璁板綍
         if (current_time->tm_mday != last_check_day) { tc1_log(
                     "WARNGIN: pcount day changed! now day %d hour %d min %d ,lastCheck day %d",
                     current_time->tm_mday, current_time->tm_hour, current_time->tm_min,
                     last_check_day);
 
 //            tc1_log("WARNGIN: pcount day changed! ");
-            // 记录数据
+            // 璁板綍鏁版嵁
             if (user_config->p_count_1_day_ago != 0) {
                 user_config->p_count_2_days_ago = user_config->p_count_1_day_ago;
             }
             user_config->p_count_1_day_ago = p_count;
 
-            // 更新系统配置
+            // 鏇存柊绯荤粺閰嶇疆
             mico_system_context_update(sys_config);
 
             tc1_log("WARNGIN: p_count record! p_count_1_day_ago:%d p_count_2_days_ago:%d",
@@ -98,7 +98,7 @@ void recordDailyPCount() {
     } else { tc1_log("WARNGIN: now day %d hour %d min %d ,lastCheck day %d", current_time->tm_mday,
                      current_time->tm_hour, current_time->tm_min, last_check_day);
     }
-    // 更新上次检查时间
+    // 鏇存柊涓婃妫€鏌ユ椂闂?
     last_check_day = current_time->tm_mday;
 }
 
@@ -144,7 +144,7 @@ int application_start(void) {
 
     bool open_ap = false;
     MicoGpioInitialize((mico_gpio_t) Button, INPUT_PULL_UP);
-    if (!MicoGpioInputGet(Button)) {   //开机时按钮状态
+    if (!MicoGpioInputGet(Button)) {   //寮€鏈烘椂鎸夐挳鐘舵€?
         tc1_log("press ap_init");
         ApInit(true);
         open_ap = true;
@@ -177,12 +177,7 @@ int application_start(void) {
 
     WifiInit();
     if (!open_ap) {
-        if (sys_config->micoSystemConfig.reserved != NOTIFY_STATION_UP) {
-            ApInit(true);
-        } else {
-            WifiConnect(sys_config->micoSystemConfig.ssid,
-                        sys_config->micoSystemConfig.user_key);
-        }
+        WifiStartOnBoot();
     }
     KeyInit();
     err = UserRtcInit();
