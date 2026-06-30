@@ -5,11 +5,13 @@ on:
     branches:
       - main
       - master
+    tags:
+      - 'v*'
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   PYTHON2_VERSION: 2.7.18
@@ -150,3 +152,13 @@ jobs:
           path: release/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "${TAG_NAME}" release/* \
+            --title "${TAG_NAME}" \
+            --notes "TC1 firmware build ${TAG_NAME}"
