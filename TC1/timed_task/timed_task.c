@@ -185,6 +185,9 @@ void ProcessTask()
             case REBOOT_SYSTEM:
                 MicoSystemReboot();
                 break;
+            case REBOOT_SOFT:
+                UserSoftReboot();
+                break;
             case CONFIG_WIFI:
 
                 micoWlanSuspendStation();

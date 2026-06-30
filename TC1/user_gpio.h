@@ -18,9 +18,11 @@
 #define RESET_SYSTEM 10
 #define SWITCH_CHILD_LOCK_ENABLE 11
 #define REBOOT_HTTP 12
+#define REBOOT_SOFT 13
 
 extern char socket_status[32];
 
+void UserSoftReboot(void);
 void UserLedSet(char x);
 void KeyInit(void);
 void UserRelaySet(unsigned char x, char y);
