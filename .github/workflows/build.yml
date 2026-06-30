@@ -1,0 +1,152 @@
+name: Build firmware
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON2_VERSION: 2.7.18
+  ARM_GCC_URL: https://launchpad.net/gcc-arm-embedded/5.0/5-2016-q2-update/+download/gcc-arm-none-eabi-5_4-2016q2-20160622-linux.tar.bz2
+  MICO_CUBE_URL: https://files.pythonhosted.org/packages/a8/4e/687a3ef2edabfd9fdd797747d6eeb2ddbe70e65c49fa4062268281a0ded4/mico-cube-1.0.0.tar.gz
+  MICODER_DIR: ${{ github.workspace }}/mico-os/MiCoder
+  TOOLCHAIN_DIR: ${{ github.workspace }}/mico-os/MiCoder/compiler/arm-none-eabi-5_4-2016q2-20160622/Linux64
+  BUILD_TARGET: TC1@MK3031@moc
+
+jobs:
+  build:
+    name: TC1 firmware
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            bzip2 \
+            ca-certificates \
+            coreutils \
+            curl \
+            file \
+            libbz2-dev \
+            libffi-dev \
+            liblzma-dev \
+            libncurses-dev \
+            libncurses5 \
+            libreadline-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libtinfo5 \
+            make \
+            perl \
+            tar \
+            zlib1g-dev
+
+      - name: Cache Python 2
+        id: cache-python2
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/python-${{ env.PYTHON2_VERSION }}
+          key: python-${{ runner.os }}-${{ runner.arch }}-${{ env.PYTHON2_VERSION }}
+
+      - name: Build Python 2
+        if: steps.cache-python2.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://www.python.org/ftp/python/${PYTHON2_VERSION}/Python-${PYTHON2_VERSION}.tgz" -o python2.tgz
+          tar -xzf python2.tgz
+          cd "Python-${PYTHON2_VERSION}"
+          ./configure --prefix="${HOME}/.local/python-${PYTHON2_VERSION}" --enable-shared
+          make -j"$(nproc)"
+          make install
+
+      - name: Export Python 2
+        run: |
+          echo "${HOME}/.local/python-${PYTHON2_VERSION}/bin" >> "${GITHUB_PATH}"
+          echo "LD_LIBRARY_PATH=${HOME}/.local/python-${PYTHON2_VERSION}/lib:${LD_LIBRARY_PATH}" >> "${GITHUB_ENV}"
+          echo "PYTHON2=${HOME}/.local/python-${PYTHON2_VERSION}/bin/python2.7" >> "${GITHUB_ENV}"
+
+      - name: Cache Arm GCC
+        id: cache-arm-gcc
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TOOLCHAIN_DIR }}
+          key: arm-gcc-${{ runner.os }}-${{ runner.arch }}-5_4-2016q2-20160622
+
+      - name: Download Arm GCC
+        if: steps.cache-arm-gcc.outputs.cache-hit != 'true'
+        run: |
+          curl -fL --retry 3 "${ARM_GCC_URL}" -o arm-gcc.tar.bz2
+          mkdir -p arm-gcc-unpacked "${TOOLCHAIN_DIR}"
+          tar -xjf arm-gcc.tar.bz2 -C arm-gcc-unpacked
+          src_dir="$(find arm-gcc-unpacked -maxdepth 1 -type d -name 'gcc-arm-none-eabi-*' -print -quit)"
+          if [ -z "${src_dir}" ]; then
+            echo "Arm GCC directory was not found in downloaded archive." >&2
+            find arm-gcc-unpacked -maxdepth 2 -type d | sort >&2
+            exit 1
+          fi
+          cp -a "${src_dir}/." "${TOOLCHAIN_DIR}/"
+
+      - name: Prepare MiCoder Linux layout
+        run: |
+          mkdir -p "${MICODER_DIR}/cmd/Linux64"
+          ln -sf /bin/cat "${MICODER_DIR}/cmd/Linux64/cat"
+          ln -sf /bin/cp "${MICODER_DIR}/cmd/Linux64/cp"
+          ln -sf /bin/echo "${MICODER_DIR}/cmd/Linux64/echo"
+          ln -sf /bin/mkdir "${MICODER_DIR}/cmd/Linux64/mkdir"
+          ln -sf /bin/mv "${MICODER_DIR}/cmd/Linux64/mv"
+          ln -sf /bin/rm "${MICODER_DIR}/cmd/Linux64/rm"
+          ln -sf /bin/dash "${MICODER_DIR}/cmd/Linux64/dash"
+          ln -sf /usr/bin/make "${MICODER_DIR}/cmd/Linux64/make"
+          "${PYTHON2}" --version
+          "${TOOLCHAIN_DIR}/bin/arm-none-eabi-gcc" --version
+
+      - name: Prepare mico-cube
+        run: |
+          curl -fsSL "${MICO_CUBE_URL}" -o mico-cube.tar.gz
+          tar -xzf mico-cube.tar.gz
+          "${PYTHON2}" mico-cube-1.0.0/mico/mico.py --version
+          "${PYTHON2}" mico-cube-1.0.0/mico/mico.py config --global MICODER "${MICODER_DIR}"
+          "${PYTHON2}" mico-cube-1.0.0/mico/mico.py config --list
+
+      - name: Generate web assets
+        working-directory: TC1/http_server
+        run: |
+          "${PYTHON2}" ./test.py
+
+      - name: Build firmware
+        run: |
+          "${MICODER_DIR}/cmd/Linux64/make" \
+            HOST_OS=Linux64 \
+            TOOLS_ROOT="${MICODER_DIR}" \
+            PYTHON="${PYTHON2}" \
+            -f mico-os/makefiles/Makefile \
+            "${BUILD_TARGET}" total
+
+      - name: Normalize firmware filenames
+        run: |
+          binary_dir="build/${BUILD_TARGET}/binary"
+          cp "${binary_dir}/${BUILD_TARGET}.ota.bin" "${binary_dir}/ota.bin"
+          cp "${binary_dir}/${BUILD_TARGET}.all.bin" "${binary_dir}/all.bin"
+          ls -lh "${binary_dir}"
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tc1-firmware
+          path: |
+            build/${{ env.BUILD_TARGET }}/binary/*.bin
+            build/${{ env.BUILD_TARGET }}/binary/*.elf
+            build/${{ env.BUILD_TARGET }}/binary/*.hex
+            build/${{ env.BUILD_TARGET }}/binary/*.map
+          if-no-files-found: error
+          retention-days: 30
