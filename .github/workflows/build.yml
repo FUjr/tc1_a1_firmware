@@ -129,6 +129,7 @@ jobs:
             HOST_OS=Linux64 \
             TOOLS_ROOT="${MICODER_DIR}" \
             PYTHON="${PYTHON2}" \
+            TLS=mocSSL \
             -f mico-os/makefiles/Makefile \
             "${BUILD_TARGET}" total
 
