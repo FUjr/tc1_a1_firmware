@@ -2,8 +2,10 @@
 
 #include "main.h"
 #include "user_gpio.h"
+#include <stdint.h>
 #include "user_wifi.h"
 #include "mqtt_server/user_mqtt_client.h"
+#include "http_server/app_httpd.h"
 
 mico_gpio_t relay[Relay_NUM] = {Relay_0, Relay_1, Relay_2, Relay_3, Relay_4, Relay_5};
 char socket_status[32] = {0};
@@ -46,6 +48,8 @@ char* get_func_name(char func_code) {
             return "Toggle LED";
         case REBOOT_SYSTEM:
             return "Reboot";
+        case REBOOT_SOFT:
+            return "Soft Reboot";
         case REBOOT_HTTP:
             return "REBOOT_HTTP";
         case CONFIG_WIFI:
@@ -168,6 +172,31 @@ void UserRelaySetAll(char y) {
     for (i = 0; i < SOCKET_NUM; i++)
         UserRelaySet(i, y);
 }
+
+void UserSoftReboot(void) {
+    mico_logic_partition_t *partition = MicoFlashGetInfo( MICO_PARTITION_APPLICATION );
+    if (partition == NULL) return;
+    uint32_t app_addr = partition->partition_start_addr;
+    uint32_t *p = (uint32_t *) app_addr;
+    
+    __asm volatile("cpsid i"); 
+    
+    // Disable SysTick
+    *(volatile uint32_t *)0xE000E010 = 0;
+    
+    // Disable NVIC interrupts
+    volatile uint32_t *icer = (volatile uint32_t *)0xE000E180;
+    volatile uint32_t *icpr = (volatile uint32_t *)0xE000E280;
+    for(int i = 0; i < 8; i++) {
+        icer[i] = 0xFFFFFFFF;
+        icpr[i] = 0xFFFFFFFF;
+    }
+
+    __asm volatile ("msr msp, %0" : : "r" (p[0]) : );
+    void (*reset_handler)(void) = (void (*)(void))p[1];
+    reset_handler();
+}
+
 static void KeyEventHandler(int num, boolean longPress) {
     key_log("WARNGIN:Power key %s %d %s", !longPress ? "quick clicked" : "longPressed", num,
             num > 1 ? (longPress ? "seconds" : "times") : (longPress ? "second" : "time"));
@@ -227,6 +256,11 @@ static void KeyEventHandler(int num, boolean longPress) {
         if (childLockEnabled)
                         break;
             MicoSystemReboot();
+            break;
+        case REBOOT_SOFT:
+        if (childLockEnabled)
+                        break;
+            UserSoftReboot();
             break;
         case REBOOT_HTTP:
         if (childLockEnabled)
@@ -389,4 +423,3 @@ void KeyInit(void) {
     MicoGpioEnableIRQ(Button, IRQ_TRIGGER_FALLING_EDGE, KeyFallingIrqHandler, NULL);
 
 }
-

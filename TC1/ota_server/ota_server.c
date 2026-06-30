@@ -239,7 +239,7 @@ static void OtaServerThread(mico_thread_arg_t arg)
     struct in_addr in_addr;
 
     mico_logic_partition_t* ota_partition = MicoFlashGetInfo(MICO_PARTITION_OTA_TEMP);
-    
+
     ota_server_context->ota_control = OTA_CONTROL_START;
 
     hostent_content = gethostbyname(ota_server_context->download_url.host);
@@ -251,12 +251,12 @@ static void OtaServerThread(mico_thread_arg_t arg)
 
     offset = 0;
     MicoFlashErase(MICO_PARTITION_OTA_TEMP, 0x0, ota_partition->partition_length);
-    
+
     CRC16_Init(&crc_context);
     if(ota_server_context->ota_check.is_md5 == true){
         InitMd5(&md5);
     }
-    
+
     httpHeader = HTTPHeaderCreateWithCallback(512, OnReceivedData, NULL, NULL);
     require_action(httpHeader, DELETE, OtaServerProgressSet(OTA_FAIL));
 
@@ -441,9 +441,9 @@ OSStatus ota_server_start(char *url, char *md5, ota_server_cb_fn call_back)
     require_action(ota_server_context, exit, err = kNoMemoryErr);
     memset(ota_server_context, 0x00, sizeof(ota_server_context_t));
 
-    ota_server_context->download_url.url = malloc(strlen(url));
+    ota_server_context->download_url.url = malloc(strlen(url) + 1);
     require_action(ota_server_context->download_url.url, exit, err = kNoMemoryErr);
-    memset(ota_server_context->download_url.url, 0x00, strlen(url));
+    memset(ota_server_context->download_url.url, 0x00, strlen(url) + 1);
 
     err = OtaServerSetUrl(url);
     require_noerr(err, exit);
@@ -458,6 +458,14 @@ OSStatus ota_server_start(char *url, char *md5, ota_server_cb_fn call_back)
 
     err = mico_rtos_create_thread(NULL, MICO_APPLICATION_PRIORITY, "OTA", OtaServerThread, OTA_SERVER_THREAD_STACK_SIZE, 0);
 exit:
+    if (err != kNoErr && ota_server_context != NULL){
+        if(ota_server_context->download_url.url != NULL){
+            free(ota_server_context->download_url.url);
+            ota_server_context->download_url.url = NULL;
+        }
+        free(ota_server_context);
+        ota_server_context = NULL;
+    }
     return err;
 }
 

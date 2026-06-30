@@ -59,7 +59,7 @@ static bool is_handlers_registered;
 const struct httpd_wsgi_call g_app_handlers[];
 char power_info_json[2560] = {0};
 char up_time[16] = "00:00:00";
-#define CHUNK_SIZE 512  // 每次发送 512 字节，避免 buffer 太大
+#define CHUNK_SIZE 512  // 姣忔鍙戦€?512 瀛楄妭锛岄伩鍏?buffer 澶ぇ
 #define OTA_BUFFER_SIZE 512
 #define MAX_OTA_SIZE 1024*1024
 
@@ -284,7 +284,7 @@ static int HttpSetOTAFile(httpd_request_t *req)
     MicoFlashErase(MICO_PARTITION_OTA_TEMP, 0x0, ota_partition->partition_length);
     CRC16_Context crc_context;
     CRC16_Init(&crc_context);
-    // 尝试读取全部 POST 数据
+    // 灏濊瘯璇诲彇鍏ㄩ儴 POST 鏁版嵁
     while (1) {
         ret = httpd_get_data2(req, buffer,OTA_BUF_SIZE);
 
@@ -296,19 +296,19 @@ static int HttpSetOTAFile(httpd_request_t *req)
             CRC16_Update(&crc_context, buffer, ret);
             err = MicoFlashWrite(MICO_PARTITION_OTA_TEMP, &offset, (uint8_t *)buffer, ret);
             require_noerr_quiet(err, exit);
-            tc1_log("[OTA] 本次读取 %d 字节，累计 %d 字节", ret, total);
+            tc1_log("[OTA] 鏈璇诲彇 %d 瀛楄妭锛岀疮璁?%d 瀛楄妭", ret, total);
         }
 
         if (ret == 0 || req->remaining_bytes <= 0) {
-            // 读取完毕
-            tc1_log("[OTA] 数据读取完成, 总计 %d 字节", total);
+            // 璇诲彇瀹屾瘯
+            tc1_log("[OTA] 鏁版嵁璇诲彇瀹屾垚, 鎬昏 %d 瀛楄妭", total);
             break;
         } else if (ret < 0) {
-            tc1_log("[OTA] 数据读取失败, ret=%d", ret);
+            tc1_log("[OTA] 鏁版嵁璇诲彇澶辫触, ret=%d", ret);
             err = kConnectionErr;
             break;
         }
-        
+
         mico_rtos_thread_msleep(100);
 
         // tc1_log("[OTA] %x", buffer);
@@ -396,7 +396,7 @@ static int HttpGetPowerInfo(httpd_request_t *req) {
     int idx = 0;
     sscanf(buf, "%d", &idx);
 
-    //计算系统运行时间
+    //璁＄畻绯荤粺杩愯鏃堕棿
     mico_time_t past_ms = 0;
     mico_time_get_time(&past_ms);
     int past = past_ms / 1000;
@@ -436,7 +436,7 @@ static int HttpGetWifiConfig(httpd_request_t *req) {
 }
 
 
-// 单个十六进制字符转数字（安全）
+// 鍗曚釜鍗佸叚杩涘埗瀛楃杞暟瀛楋紙瀹夊叏锛?
 static int hex_char_to_int(char c) {
     if ('0' <= c && c <= '9') return c - '0';
     if ('a' <= c && c <= 'f') return c - 'a' + 10;
@@ -444,7 +444,7 @@ static int hex_char_to_int(char c) {
     return -1;
 }
 
-// 健壮版 URL 解码函数
+// 鍋ュ．鐗?URL 瑙ｇ爜鍑芥暟
 void url_decode(const char *src, char *dest, size_t max_len) {
     size_t i = 0;
     while (*src && i < max_len - 1) {
@@ -458,7 +458,7 @@ void url_decode(const char *src, char *dest, size_t max_len) {
                     continue;
                 }
             }
-            // 非法编码，跳过 %
+            // 闈炴硶缂栫爜锛岃烦杩?%
             src++;
         } else if (*src == '+') {
             dest[i++] = ' ';
@@ -479,14 +479,18 @@ static int HttpSetWifiConfig(httpd_request_t *req) {
   char *wifi_ssid = malloc(128);
   char *wifi_key = malloc(128);
   int mode = -1;
+    require_action(buf && ssid_enc && key_enc && wifi_ssid && wifi_key, exit, err = kNoMemoryErr);
 
 
 
     err = httpd_get_data(req, buf, 256);
     require_noerr(err, exit);
-  // 假设 httpd_get_data(req, buf, 256);
+  // 鍋囪 httpd_get_data(req, buf, 256);
 //  tc1_log("wifi config %s",buf);
-  sscanf(buf, "%d %s %s", &mode, ssid_enc, key_enc);
+  if (sscanf(buf, "%d %127s %127s", &mode, ssid_enc, key_enc) != 3) {
+      err = kParamErr;
+      goto exit;
+  }
 //  tc1_log("wifi config %s %s",ssid_enc,key_enc);
   url_decode(ssid_enc, wifi_ssid,128);
   url_decode(key_enc, wifi_key,128);
@@ -501,6 +505,8 @@ static int HttpSetWifiConfig(httpd_request_t *req) {
 
     exit:
     if (buf) free(buf);
+    if (ssid_enc) free(ssid_enc);
+    if (key_enc) free(key_enc);
     if (wifi_ssid) free(wifi_ssid);
     if (wifi_key) free(wifi_key);
     return err;
@@ -512,6 +518,7 @@ static int HttpGetWifiScan(httpd_request_t *req) {
         scaned = false;
         send_http(wifi_ret, strlen(wifi_ret), exit, &err);
         free(wifi_ret);
+        wifi_ret = NULL;
     } else {
         send_http("NO", 2, exit, &err);
     }
@@ -530,10 +537,16 @@ static int HttpSetWifiScan(httpd_request_t *req) {
 
 static int HttpSetRebootSystem(httpd_request_t *req) {
     OSStatus err = kNoErr;
+    char buf[10] = {0};
+    httpd_get_data(req, buf, sizeof(buf));
 
     send_http("OK", 2, exit, &err);
 
-    MicoSystemReboot();
+    if (strstr(buf, "soft") != NULL) {
+        UserSoftReboot();
+    } else {
+        MicoSystemReboot();
+    }
 
     exit:
     return err;

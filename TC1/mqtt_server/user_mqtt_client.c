@@ -59,10 +59,16 @@ static mico_worker_thread_t mqtt_client_worker_thread; /* Worker thread to manag
 //static mico_timed_event_t mqtt_client_send_event;
 
 char topic_state[MAX_MQTT_TOPIC_SIZE];
-char topic_set[MAX_MQTT_TOPIC_SIZE];  // 修改为使用设备特定的主题
+char topic_set[MAX_MQTT_TOPIC_SIZE];  // 婵烇絽娴傞崰妤呭极閸忚偐鈻旈弶鐐存緲閳诲繘鏌ｉ～顒€濮€妞ゆ梹娲樺鍕炊閳轰緡妫楅柣搴ゎ潐濮樸劌鈻撻幋鐐碘枖濠电姵鍑归弳?
 
 mico_timer_t timer_handle;
 static char timer_status = 0;
+
+static bool mqtt_cmd_starts_with(const char *cmd, const char *prefix)
+{
+    size_t len = strlen(prefix);
+    return strncmp(cmd, prefix, len) == 0 && (cmd[len] == 0 || cmd[len] == ' ');
+}
 
 void UserMqttTimerFunc(void *arg) {
     LinkStatusTypeDef LinkStatus;
@@ -79,6 +85,7 @@ void UserMqttTimerFunc(void *arg) {
                 UserMqttHassAutoTotalSocket();
                 UserMqttHassAutoChildLock();
                 UserMqttHassAutoRebootButton();
+                UserMqttHassAutoSoftRebootButton();
                 break;
             case 1:
             case 2:
@@ -102,7 +109,7 @@ void UserMqttTimerFunc(void *arg) {
 OSStatus UserMqttDeInit(void) {
     OSStatus err = kNoErr;
 
-    // 1. 请求线程退出
+    // 1. 闁荤姴娲弨閬嶆儑閹殿喚妫悹鎭掑妷閺屻倝姊洪鐔蜂壕闂?
     mqtt_thread_should_exit = true;
 
     return err;
@@ -115,7 +122,7 @@ return;
     void *msg = NULL;
     while (mico_rtos_is_queue_empty(&mqtt_msg_send_queue) == false) {
         if (mico_rtos_pop_from_queue(&mqtt_msg_send_queue, &msg, 0) == kNoErr) {
-            if (msg) free(msg);  // 释放消息内存，避免泄漏
+            if (msg) free(msg);  // 闂備焦褰冮敃銉╁棘娴ｇ硶妲堥柛顐ゅ枍缁辨牠鏌涢幇顒佸櫣闁宦板姂閺佸秴鐣濋崟顏嗙礆闂佺绻愮粔鐢垫兜閻樺樊鐓?
         }
     }
 }
@@ -125,7 +132,7 @@ OSStatus UserMqttInit(void) {
     OSStatus err = kNoErr;
 if(mqtt_msg_send_queue != NULL)
     return err;
-    sprintf(topic_set, MQTT_CLIENT_SUB_TOPIC1, str_mac);  // 使用MAC地址作为设备标识符
+    sprintf(topic_set, MQTT_CLIENT_SUB_TOPIC1, str_mac);  // 婵炶揪缍€濞夋洟寮ˉ鐭–闂侀潻闄勫妯侯焽閸愨晜濯存繝濞惧亾閻犳劗鍠撻幏瀣箚瑜滃Σ鐢告煛瀹ュ懏绌块柣锔藉灩缁?
     sprintf(topic_state, MQTT_CLIENT_PUB_TOPIC, str_mac);
     //TODO size:0x800
     int mqtt_thread_stack_size = 0x2000;
@@ -152,6 +159,11 @@ if(mqtt_msg_send_queue != NULL)
     require_noerr_string(err, exit, "ERROR: Unable to start the mqtt client worker thread.");
 
     exit:
+    if (kNoErr != err && mqtt_msg_send_queue != NULL) {
+        clear_mqtt_msg_send_queue();
+        mico_rtos_deinit_queue(&mqtt_msg_send_queue);
+        mqtt_msg_send_queue = NULL;
+    }
     if (kNoErr != err)mqtt_log("ERROR2, app thread exit err: %d kNoErr[%d]", err, kNoErr);
     return err;
 }
@@ -166,16 +178,6 @@ static OSStatus UserMqttClientRelease(Client *c, Network *n) {
         c->isconnected = 0;
     }
 
-    if (c->buf) {
-        free(c->buf);
-        c->buf = NULL;
-    }
-
-    if (c->readbuf) {
-        free(c->readbuf);
-        c->readbuf = NULL;
-    }
-
     if (n->disconnect) {
         n->disconnect(n);
     }
@@ -184,6 +186,7 @@ static OSStatus UserMqttClientRelease(Client *c, Network *n) {
         mqtt_log("MQTTClientDeinit failed!");
         err = kDeletedErr;
     }
+    memset(n, 0, sizeof(Network));
 
     return err;
 }
@@ -253,6 +256,8 @@ void MqttClientThread(mico_thread_arg_t arg) {
                    mqtt_log("ERROR: create msg send queue event fd failed!!!"));
     mqtt_thread_should_exit = false;
     MQTT_start:
+    clear_mqtt_msg_send_queue();
+    UserMqttClientRelease(&c, &n);
 
     isconnect = false;
     /* 1. create network connection */
@@ -262,7 +267,7 @@ void MqttClientThread(mico_thread_arg_t arg) {
         isconnect = false;
         mico_rtos_thread_sleep(3);
         if (MQTT_SERVER[0] < 0x20 || MQTT_SERVER[0] > 0x7f || MQTT_SERVER_PORT < 1)
-            continue;  //鏈厤缃甿qtt鏈嶅姟鍣ㄦ椂涓嶈繛鎺�
+            continue;  //闂備礁鎼悧婊勭椤忓牆鍌ㄩ柕鍫濇川绾鹃箖鏌ｉ姀銏ｅ姌tt闂備礁鎼悧鍡欑矓鐎涙ɑ鍙忛柣鏃傚帶闂傤垶鏌曟繝蹇涙妞は佸啠妲堥柟鎯х－鍟哥紓浣虹帛閻╊垶鐛幒妤佹櫢?
 
         micoWlanGetLinkStatus(&LinkStatus);
         if (LinkStatus.is_connected != 1) { mqtt_log(
@@ -301,11 +306,11 @@ void MqttClientThread(mico_thread_arg_t arg) {
 
     UserLedSet(RelayOut() && user_config->power_led_enabled);
 
-    /* 4. mqtt client subscribe - 现在每个设备会订阅自己的主题 */
+    /* 4. mqtt client subscribe - 闂佺粯绮嶅妯猴耿椤忓嫅鎺曠疀鎼淬劌娈濋柣鐘辩劍閸庢娊藝椤掍礁顕辨慨妯诲墯閸氬倿姊婚崘銊﹀殌闁搞倖绮岄蹇旀綇閳哄倻鏆犳繛鎴炴尭椤兘銆?*/
     rc = MQTTSubscribe(&c, topic_set, QOS0, MessageArrived);
     require_noerr_string(rc, MQTT_reconnect, "ERROR: MQTT client subscribe err.");mqtt_log(
             "MQTT client subscribe success! recv_topic=[%s].", topic_set);
-    /*4.1 杩炴帴鎴愬姛鍚庡厛鏇存柊鍙戦�佷竴娆℃暟鎹�*/
+    /* 4.1 mark mqtt connected */
     isconnect = true;
 
     int i = 0;
@@ -379,7 +384,7 @@ exit:
     isconnect = false;
     mqtt_log("EXIT: MQTT client exit with err = %d.", err);
     UserMqttClientRelease(&c, &n);
-    mico_rtos_delete_thread(NULL); // 自删
+    mico_rtos_delete_thread(NULL); // 闂佺厧顨庢禍婊堝垂?
     return;
 }
 
@@ -392,11 +397,16 @@ static void MessageArrived(MessageData *md) {
     p_recv_msg = (p_mqtt_recv_msg_t) calloc(1, sizeof(mqtt_recv_msg_t));
     require_action(p_recv_msg, exit, err = kNoMemoryErr);
 
-    p_recv_msg->datalen = message->payloadlen;
+    p_recv_msg->datalen = message->payloadlen >= MAX_MQTT_DATA_SIZE ?
+                           MAX_MQTT_DATA_SIZE - 1 : message->payloadlen;
     p_recv_msg->qos = (char) (message->qos);
     p_recv_msg->retained = message->retained;
-    strncpy(p_recv_msg->topic, md->topicName->lenstring.data, md->topicName->lenstring.len);
-    memcpy(p_recv_msg->data, message->payload, message->payloadlen);
+    int topic_len = md->topicName->lenstring.len >= MAX_MQTT_TOPIC_SIZE ?
+                    MAX_MQTT_TOPIC_SIZE - 1 : md->topicName->lenstring.len;
+    memcpy(p_recv_msg->topic, md->topicName->lenstring.data, topic_len);
+    p_recv_msg->topic[topic_len] = 0;
+    memcpy(p_recv_msg->data, message->payload, p_recv_msg->datalen);
+    p_recv_msg->data[p_recv_msg->datalen] = 0;
 
     mqtt_log("MessageArrived topic[%s] data[%s]", p_recv_msg->topic, p_recv_msg->data);
     err = mico_rtos_send_asynchronous_event(&mqtt_client_worker_thread, UserRecvHandler,
@@ -432,17 +442,17 @@ void ProcessHaCmd(char *cmd) {
     mqtt_log("ProcessHaCmd[%s]", cmd);
     char mac[20] = {0};
 
-    if (strcmp(cmd, "set socket") == ' ') {
+    if (mqtt_cmd_starts_with(cmd, "set socket")) {
         int i, on;
-        sscanf(cmd, "set socket %s %d %d", mac, &i, &on);
+        if (sscanf(cmd, "set socket %19s %d %d", mac, &i, &on) != 3) return;
         if (strcmp(mac, str_mac)) return;mqtt_log("set socket[%d] on[%d]", i, on);
         UserRelaySet(i, on);
         UserMqttSendSocketState(i);
         UserMqttSendTotalSocketState();
         mico_system_context_update(sys_config);
-    } else if (strcmp(cmd, "set led") == ' ') {
+    } else if (mqtt_cmd_starts_with(cmd, "set led")) {
         int on;
-        sscanf(cmd, "set led %s %d", mac, &on);
+        if (sscanf(cmd, "set led %19s %d", mac, &on) != 2) return;
         if (strcmp(mac, str_mac)) return;mqtt_log("set led on[%d]", on);
         user_config->power_led_enabled = on;
         if (RelayOut() && user_config->power_led_enabled) {
@@ -452,9 +462,9 @@ void ProcessHaCmd(char *cmd) {
         }
         UserMqttSendLedState();
         mico_system_context_update(sys_config);
-    } else if (strcmp(cmd, "set total_socket") == ' ') {
+    } else if (mqtt_cmd_starts_with(cmd, "set total_socket")) {
         int on;
-        sscanf(cmd, "set total_socket %s %d", mac, &on);
+        if (sscanf(cmd, "set total_socket %19s %d", mac, &on) != 2) return;
         if (strcmp(mac, str_mac)) return;mqtt_log("set total_socket on[%d]", on);
         UserRelaySetAll(on);
         int i = 0;
@@ -463,18 +473,22 @@ void ProcessHaCmd(char *cmd) {
             UserMqttSendSocketState(i);
         }
         UserMqttSendTotalSocketState();
-    }else if (strcmp(cmd, "set childLock") == ' ') {
+    }else if (mqtt_cmd_starts_with(cmd, "set childLock")) {
         int on;
-        sscanf(cmd, "set childLock %s %d", mac, &on);
+        if (sscanf(cmd, "set childLock %19s %d", mac, &on) != 2) return;
         if (strcmp(mac, str_mac)) return;mqtt_log("set childLock on[%d]", on);
         user_config->user[0] = on;
         childLockEnabled = on;
         UserMqttSendChildLockState();
         mico_system_context_update(sys_config);
-    }else if (strcmp(cmd, "reboot") == ' ') {
-        sscanf(cmd, "reboot %s", mac);
+    }else if (mqtt_cmd_starts_with(cmd, "reboot")) {
+        if (sscanf(cmd, "reboot %19s", mac) != 1) return;
         if (strcmp(mac, str_mac)) return;
-        MicoSystemReboot();  // 立即重启设备
+        MicoSystemReboot();  // 缂備焦鏌ㄩ鍛暤閸℃稒鐓傜€广儱鎳忛崕娆撴偣娴ｇ懓鍔ゆい?
+    }else if (mqtt_cmd_starts_with(cmd, "soft_reboot")) {
+        if (sscanf(cmd, "soft_reboot %19s", mac) != 1) return;
+        if (strcmp(mac, str_mac)) return;
+        UserSoftReboot();  // 闁哄鍎愰崹鍫曞闯閹间礁瑙︽い鏍ㄧ箥閸熷骸顭?
     }
 }
 
@@ -500,9 +514,12 @@ OSStatus UserMqttSendTopic(char *topic, char *arg, char retained) {
 
     p_send_msg->qos = 0;
     p_send_msg->retained = retained;
-    p_send_msg->datalen = strlen(arg);
+    p_send_msg->datalen = strlen(arg) >= MAX_MQTT_DATA_SIZE ?
+                           MAX_MQTT_DATA_SIZE - 1 : strlen(arg);
     memcpy(p_send_msg->data, arg, p_send_msg->datalen);
-    strncpy(p_send_msg->topic, topic, MAX_MQTT_TOPIC_SIZE);
+    p_send_msg->data[p_send_msg->datalen] = 0;
+    strncpy(p_send_msg->topic, topic, MAX_MQTT_TOPIC_SIZE - 1);
+    p_send_msg->topic[MAX_MQTT_TOPIC_SIZE - 1] = 0;
 
     err = mico_rtos_push_to_queue(&mqtt_msg_send_queue, &p_send_msg, 0);
     require_noerr(err, exit);
@@ -519,7 +536,7 @@ OSStatus UserMqttSend(char *arg) {
     return UserMqttSendTopic(topic_state, arg, 0);
 }
 
-//鏇存柊ha寮�鍏崇姸鎬�
+//闂備礁鎼ú銈夋偤閵娾晛钃熷┑鍌滈兘闁诲孩顔栭崳顖炲箯閻戣姤鐓曢煫鍥ㄦ尵閿涘秴鈹戦鑺ュ€愭鐐╁亾闂?
 OSStatus UserMqttSendSocketState(char socket_id) {
     char *send_buf = malloc(64);
     char *topic_buf = malloc(64);
@@ -581,7 +598,7 @@ OSStatus UserMqttSendChildLockState(void) {
     return oss_status;
 }
 
-//hass mqtt鑷姩鍙戠幇鏁版嵁寮�鍏冲彂閫�
+//hass mqtt闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勬噹閻鏌熺€电孝缂佺姵鐩弻鈩冩媴閸濆嫷鏆悗瑙勬尫缁€渚€顢氶敐澶嬫櫢濞寸姴顑呯粈鍌炴煕閹邦厼绲荤紒鍙夋そ濮婃椽顢曢浣割伓
 void UserMqttHassAuto(char socket_id) {
     socket_id--;
     char *send_buf = NULL;
@@ -595,7 +612,7 @@ void UserMqttHassAuto(char socket_id) {
                 "\"uniq_id\":\"tc1_%s_s%d\","
                 "\"object_id\":\"tc1_%s_s%d\","
                 "\"stat_t\":\"homeassistant/switch/%s/socket_%d/state\","
-                "\"cmd_t\":\"device/ztc1/%s/set\","  // 修改命令主题以匹配设备唯一标识
+                "\"cmd_t\":\"device/ztc1/%s/set\","  // 婵烇絽娴傞崰妤呭极婵傜宸濋柟瀛樺笚婵垹鈽夐幘鎰佺吋妞わ綀濮ょ粋鎺楀Ψ閵夈儳鍩嶉梻浣规緲缁夌兘顢欓弴鐔风窞闁搞儜鍕婵炴垶鎸撮崑鎾绘煛瀹ュ懏绌块柣?
                 "\"pl_on\":\"set socket %s %d 1\","
                 "\"pl_off\":\"set socket %s %d 0\","
                 "\"device_class\":\"outlet\","
@@ -605,7 +622,7 @@ void UserMqttHassAuto(char socket_id) {
                 "\"model\":\"TC1\","
                 "\"manufacturer\":\"PHICOMM\"}}",
                 user_config->socket_names[(int)socket_id], str_mac, socket_id,str_mac, socket_id, str_mac, socket_id,
-                str_mac,  // 添加设备MAC地址到命令主题中
+                str_mac,  // 濠电儑缍€椤曆勬叏閻愬灚濯奸柟顖嗗本校MAC闂侀潻闄勫妯侯焽閸愵喖绀嗛柡澶嬪閸ゆ帒霉閻橆喖鈧挾鈧潧鏈敍鎰熺涵鍛箑
                 str_mac,
                 socket_id, str_mac, socket_id, str_mac,sys_config->micoSystemConfig.name);
         UserMqttSendTopic(topic_buf, send_buf, 1);
@@ -622,20 +639,48 @@ void UserMqttHassAutoRebootButton(void) {
     send_buf = (char *) malloc(600);
     topic_buf = (char *) malloc(64);
     if (send_buf != NULL && topic_buf != NULL) {
-        // 重启按钮配置
+        // 闂備焦褰冪粔鎾箚鎼淬劌绠板鑸靛姈鐏忥箓姊洪弶璺ㄐら柣?
         sprintf(topic_buf, "homeassistant/button/%s/reboot/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"重启设备\","
+                "{\"name\":\"Reboot Device\","
                 "\"uniq_id\":\"tc1_%s_reboot\","
                 "\"object_id\":\"tc1_%s_reboot\","
-                "\"cmd_t\":\"device/ztc1/%s/set\","  // 修改命令主题以匹配设备唯一标识
+                "\"cmd_t\":\"device/ztc1/%s/set\","  // 婵烇絽娴傞崰妤呭极婵傜宸濋柟瀛樺笚婵垹鈽夐幘鎰佺吋妞わ綀濮ょ粋鎺楀Ψ閵夈儳鍩嶉梻浣规緲缁夌兘顢欓弴鐔风窞闁搞儜鍕婵炴垶鎸撮崑鎾绘煛瀹ュ懏绌块柣?
                 "\"pl_prs\":\"reboot %s\","
+                "\"device_class\":\"restart\","
                 "\"device\":{"
                 "\"identifiers\":[\"tc1_%s\"],"
                 "\"name\":\"%s\","
                 "\"model\":\"TC1\","
                 "\"manufacturer\":\"PHICOMM\"}}",
-                str_mac,str_mac,str_mac,str_mac,str_mac, sys_config->micoSystemConfig.name);
+                str_mac, str_mac, str_mac, str_mac, str_mac, sys_config->micoSystemConfig.name);
+        UserMqttSendTopic(topic_buf, send_buf, 1);
+    }
+    if (send_buf) free(send_buf);
+    if (topic_buf) free(topic_buf);
+}
+
+void UserMqttHassAutoSoftRebootButton(void) {
+    char *send_buf = NULL;
+    char *topic_buf = NULL;
+    send_buf = (char *) malloc(600);
+    topic_buf = (char *) malloc(64);
+    if (send_buf != NULL && topic_buf != NULL) {
+        // 闁哄鍎愰崹鍫曞闯閹间礁瑙︽い鏍ㄧ☉閻﹀姊虹粵瀣珝闁告ǜ鍊楃槐?
+        sprintf(topic_buf, "homeassistant/button/%s/soft_reboot/config", str_mac);
+        sprintf(send_buf,
+                "{\"name\":\"Soft Reboot\","
+                "\"uniq_id\":\"tc1_%s_soft_reboot\","
+                "\"object_id\":\"tc1_%s_soft_reboot\","
+                "\"cmd_t\":\"device/ztc1/%s/set\","
+                "\"pl_prs\":\"soft_reboot %s\","
+                "\"device_class\":\"restart\","
+                "\"device\":{"
+                "\"identifiers\":[\"tc1_%s\"],"
+                "\"name\":\"%s\","
+                "\"model\":\"TC1\","
+                "\"manufacturer\":\"PHICOMM\"}}",
+                str_mac, str_mac, str_mac, str_mac, str_mac, sys_config->micoSystemConfig.name);
         UserMqttSendTopic(topic_buf, send_buf, 1);
     }
     if (send_buf) free(send_buf);
@@ -650,11 +695,11 @@ void UserMqttHassAutoLed(void) {
     if (send_buf != NULL && topic_buf != NULL) {
         sprintf(topic_buf, "homeassistant/switch/%s/led/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"LED指示灯\","
+                "{\"name\":\"LED Indicator\","
                 "\"uniq_id\":\"tc1_%s_led\","
                 "\"object_id\":\"tc1_%s_led\","
                 "\"stat_t\":\"homeassistant/switch/%s/led/state\","
-                "\"cmd_t\":\"device/ztc1/%s/set\","  // 修改命令主题以匹配设备唯一标识
+                "\"cmd_t\":\"device/ztc1/%s/set\","  // 婵烇絽娴傞崰妤呭极婵傜宸濋柟瀛樺笚婵垹鈽夐幘鎰佺吋妞わ綀濮ょ粋鎺楀Ψ閵夈儳鍩嶉梻浣规緲缁夌兘顢欓弴鐔风窞闁搞儜鍕婵炴垶鎸撮崑鎾绘煛瀹ュ懏绌块柣?
                 "\"pl_on\":\"set led %s 1\","
                 "\"pl_off\":\"set led %s 0\","
                 "\"device_class\":\"outlet\","
@@ -680,11 +725,11 @@ void UserMqttHassAutoChildLock(void) {
     if (send_buf != NULL && topic_buf != NULL) {
         sprintf(topic_buf, "homeassistant/switch/%s/childLock/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"童锁\","
+                "{\"name\":\"Child Lock\","
                 "\"uniq_id\":\"tc1_%s_child_lock\","
                 "\"object_id\":\"tc1_%s_child_lock\","
                 "\"stat_t\":\"homeassistant/switch/%s/childLock/state\","
-                "\"cmd_t\":\"device/ztc1/%s/set\","  // 修改命令主题以匹配设备唯一标识
+                "\"cmd_t\":\"device/ztc1/%s/set\","  // 婵烇絽娴傞崰妤呭极婵傜宸濋柟瀛樺笚婵垹鈽夐幘鎰佺吋妞わ綀濮ょ粋鎺楀Ψ閵夈儳鍩嶉梻浣规緲缁夌兘顢欓弴鐔风窞闁搞儜鍕婵炴垶鎸撮崑鎾绘煛瀹ュ懏绌块柣?
                 "\"pl_on\":\"set childLock %s 1\","
                 "\"pl_off\":\"set childLock %s 0\","
                 "\"device_class\":\"outlet\","
@@ -710,11 +755,11 @@ void UserMqttHassAutoTotalSocket(void) {
     if (send_buf != NULL && topic_buf != NULL) {
         sprintf(topic_buf, "homeassistant/switch/%s/total_socket/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"总开关\","
+                "{\"name\":\"Master Switch\","
                 "\"uniq_id\":\"tc1_%s_total_socket\","
                 "\"object_id\":\"tc1_%s_total_socket\","
                 "\"stat_t\":\"homeassistant/switch/%s/total_socket/state\","
-                "\"cmd_t\":\"device/ztc1/%s/set\","  // 修改命令主题以匹配设备唯一标识
+                "\"cmd_t\":\"device/ztc1/%s/set\","  // 婵烇絽娴傞崰妤呭极婵傜宸濋柟瀛樺笚婵垹鈽夐幘鎰佺吋妞わ綀濮ょ粋鎺楀Ψ閵夈儳鍩嶉梻浣规緲缁夌兘顢欓弴鐔风窞闁搞儜鍕婵炴垶鎸撮崑鎾绘煛瀹ュ懏绌块柣?
                 "\"pl_on\":\"set total_socket %s 1\","
                 "\"pl_off\":\"set total_socket %s 0\","
                 "\"device_class\":\"outlet\","
@@ -723,7 +768,7 @@ void UserMqttHassAutoTotalSocket(void) {
                 "\"name\":\"%s\","
                 "\"model\":\"TC1\","
                 "\"manufacturer\":\"PHICOMM\"}}",
-                str_mac, str_mac, str_mac, str_mac, str_mac, str_mac, str_mac,sys_config->micoSystemConfig.name); 
+                str_mac, str_mac, str_mac, str_mac, str_mac, str_mac, str_mac,sys_config->micoSystemConfig.name);
         UserMqttSendTopic(topic_buf, send_buf, 1);
     }
     if (send_buf)
@@ -732,7 +777,7 @@ void UserMqttHassAutoTotalSocket(void) {
         free(topic_buf);
 }
 
-//hass mqtt鑷姩鍙戠幇鏁版嵁鍔熺巼鍙戦��
+//hass mqtt闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勬噹閻鏌熺€电孝缂佺姵鐩弻鈩冩媴閸濆嫷鏆悗瑙勬尫缁舵艾鐣峰┑瀣亜闁告繂瀚慨鐢告⒑閸涘﹦鎳勯柛銊ユ健閺佹捇寮妶鍡楊伓
 void UserMqttHassAutoPower(void) {
     char *send_buf = NULL;
     char *topic_buf = NULL;
@@ -741,7 +786,7 @@ void UserMqttHassAutoPower(void) {
     if (send_buf != NULL && topic_buf != NULL) {
         sprintf(topic_buf, "homeassistant/sensor/%s/power/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"功率\","
+                "{\"name\":\"Power\","
                 "\"uniq_id\":\"tc1_%s_p\","
                 "\"object_id\":\"tc1_%s_p\","
                 "\"state_topic\":\"homeassistant/sensor/%s/power/state\","
@@ -756,7 +801,7 @@ void UserMqttHassAutoPower(void) {
         UserMqttSendTopic(topic_buf, send_buf, 1);
         sprintf(topic_buf, "homeassistant/sensor/%s/powerConsumption/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"总耗电量\","
+                "{\"name\":\"Energy Total\","
                 "\"uniq_id\":\"tc1_%s_pc\","
                 "\"object_id\":\"tc1_%s_pc\","
                 "\"state_topic\":\"homeassistant/sensor/%s/powerConsumption/state\","
@@ -773,7 +818,7 @@ void UserMqttHassAutoPower(void) {
 
         sprintf(topic_buf, "homeassistant/sensor/%s/startupTime/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"运行时间\","
+                "{\"name\":\"Uptime\","
                 "\"uniq_id\":\"tc1_%s_sut\","
                 "\"object_id\":\"tc1_%s_sut\","
                 "\"state_topic\":\"homeassistant/sensor/%s/startupTime/state\","
@@ -789,7 +834,7 @@ void UserMqttHassAutoPower(void) {
 
         sprintf(topic_buf, "homeassistant/sensor/%s/powerConsumptionToday/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"今日耗电量\","
+                "{\"name\":\"Energy Today\","
                 "\"uniq_id\":\"tc1_%s_pc_today\","
                 "\"object_id\":\"tc1_%s_pc_today\","
                 "\"state_topic\":\"homeassistant/sensor/%s/powerConsumptionToday/state\","
@@ -805,7 +850,7 @@ void UserMqttHassAutoPower(void) {
 
         sprintf(topic_buf, "homeassistant/sensor/%s/powerConsumptionYesterday/config", str_mac);
         sprintf(send_buf,
-                "{\"name\":\"昨日耗电量\","
+                "{\"name\":\"Energy Yesterday\","
                 "\"uniq_id\":\"tc1_%s_pc_yesterday\","
                 "\"object_id\":\"tc1_%s_pc_yesterday\","
                 "\"state_topic\":\"homeassistant/sensor/%s/powerConsumptionYesterday/state\","
@@ -835,7 +880,7 @@ extern void UserMqttHassPower(void) {
     sprintf(send_buf, "{\"powerConsumption\":\"%.3f\"}", (17.1 * p_count) / 1000 / 36000);
     UserMqttSendTopic(topic_buf, send_buf, 0);
 
-    //计算系统运行时间
+    //闁荤姳绶ょ槐鏇㈡偩閼姐倕瀵查柤濮愬€楅崺鐘诲级閳哄倸濮屾い銏″灴瀵噣宕奸弴鐕傜吹
     char up_time[16] = "00:00:00";
     mico_time_t past_ms = 0;
     mico_time_get_time(&past_ms);
