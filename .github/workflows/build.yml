@@ -133,21 +133,20 @@ jobs:
             -f mico-os/makefiles/Makefile \
             "${BUILD_TARGET}" total
 
-      - name: Normalize firmware filenames
+      - name: Publish firmware to release directory
         run: |
           binary_dir="build/${BUILD_TARGET}/binary"
-          cp "${binary_dir}/${BUILD_TARGET}.ota.bin" "${binary_dir}/ota.bin"
-          cp "${binary_dir}/${BUILD_TARGET}.all.bin" "${binary_dir}/all.bin"
-          ls -lh "${binary_dir}"
+          rm -rf release
+          mkdir -p release
+          cp -a "${binary_dir}/." release/
+          cp "release/${BUILD_TARGET}.ota.bin" release/ota.bin
+          cp "release/${BUILD_TARGET}.all.bin" release/all.bin
+          find release -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tc1-firmware
-          path: |
-            build/${{ env.BUILD_TARGET }}/binary/*.bin
-            build/${{ env.BUILD_TARGET }}/binary/*.elf
-            build/${{ env.BUILD_TARGET }}/binary/*.hex
-            build/${{ env.BUILD_TARGET }}/binary/*.map
+          path: release/
           if-no-files-found: error
           retention-days: 30
