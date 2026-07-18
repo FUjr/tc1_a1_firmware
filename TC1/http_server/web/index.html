@@ -125,6 +125,14 @@
                 </i>
                 <span class="lang" langKey="SystemLog">系统日志</span>
             </a>
+            <a class="mdl-navigation__link" href="javascript:ShowPage(8);">
+                <i class="mdl-color-text--blue-grey-400 material-icons" role="presentation">
+                    <svg>
+                        <use xlink:href="#icon-settings"/>
+                    </svg>
+                </i>
+                <span>访问认证</span>
+            </a>
         </nav>
     </div>
     <main class="mdl-layout__content">
@@ -384,6 +392,11 @@
                 </div>
                 <div class="mdl-card__supporting-text">
                     <form action="#">
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                            <input class="mdl-textfield__input" type="text" id="web_username"
+                                   value="admin" readonly>
+                            <label class="mdl-textfield__label" for="web_username">用户名</label>
+                        </div>
                         <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
                             <input class="mdl-textfield__input" type="text" id="mqtt_addr">
                             <label class="mdl-textfield__label" for="mqtt_addr">地址</label>
@@ -682,6 +695,32 @@
                        class="mdl-button mdl-button--colored ">
                         刷新
                     </button>
+                </div>
+            </div>
+
+            <div class="page page8 mdl-cell mdl-cell--6-col demo-card-square mdl-card mdl-shadow--2dp">
+                <div class="mdl-card__title mdl-card--expand">
+                    <h2 class="mdl-card__title-text">访问认证</h2>
+                </div>
+                <div class="mdl-card__supporting-text">
+                    <form action="#">
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                            <input class="mdl-textfield__input" type="password" id="web_password"
+                                   minlength="8" maxlength="32" autocomplete="new-password">
+                            <label class="mdl-textfield__label" for="web_password">新密码</label>
+                        </div>
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                            <input class="mdl-textfield__input" type="password" id="web_password_confirm"
+                                   minlength="8" maxlength="32" autocomplete="new-password">
+                            <label class="mdl-textfield__label" for="web_password_confirm">确认新密码</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="mdl-card__actions mdl-card--border">
+                    <button type="button" id="web_password_submit"
+                            class="mdl-button mdl-button--colored">设置密码</button>
+                    <button type="button" id="web_password_clear"
+                            class="mdl-button">清空密码</button>
                 </div>
             </div>
 
@@ -1126,6 +1165,45 @@ componentHandler.upgradeDom();
     //Socket-end
 
     //Config-start
+    function SetWebPassword(password) {
+      HttpPost("/auth/password", function (re) {
+        if (re == "OK") {
+          ShowToast(password ? "密码已设置，用户名为 admin" : "密码已清空");
+          window.setTimeout(function () { location.reload(); }, 800);
+        } else if (re == "PASSWORD_TOO_SHORT") {
+          ShowToast("密码至少需要 8 个字符");
+        } else if (re == "PASSWORD_INVALID") {
+          ShowToast("密码只能使用可打印 ASCII 字符");
+        } else {
+          ShowToast(re);
+        }
+      }, password);
+    }
+
+    $("#web_password_submit").on("click", function() {
+      var password = $("#web_password").val();
+      var confirmation = $("#web_password_confirm").val();
+      if (password.length < 8 || password.length > 32) {
+        ShowToast("密码长度应为 8 到 32 个字符");
+        return;
+      }
+      if (!/^[\x20-\x7e]+$/.test(password)) {
+        ShowToast("密码只能使用可打印 ASCII 字符");
+        return;
+      }
+      if (password !== confirmation) {
+        ShowToast("两次输入的密码不一致");
+        return;
+      }
+      SetWebPassword(password);
+    });
+
+    $("#web_password_clear").on("click", function() {
+      if (confirm("确定清空 Web 访问密码吗？")) {
+        SetWebPassword("");
+      }
+    });
+
     $("#wifi_sel").on("change", function() {
       var div_custom = $("#div_custom_ssid")[0];
       var wifi_sel_id = $("input[name='wifi_sel']")[0];

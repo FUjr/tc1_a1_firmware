@@ -284,8 +284,8 @@ int httpd_send_response_301(httpd_request_t *req, char *location, const char
 	int ret;
 
 	/* Parse the header tags. This is valid only for GET or HEAD request */
-	if (req->type == HTTPD_REQ_TYPE_GET ||
-		req->type == HTTPD_REQ_TYPE_HEAD) {
+	if (!req->hdr_parsed && (req->type == HTTPD_REQ_TYPE_GET ||
+		req->type == HTTPD_REQ_TYPE_HEAD)) {
 		ret = httpd_purge_headers(req->sock);
 
 		if (ret != kNoErr) {
@@ -368,8 +368,8 @@ int httpd_send_all_header(httpd_request_t *req, const char *first_line, int body
   int ret;
 
   /* Parse the header tags. This is valid only for GET or HEAD request */
-  if (req->type == HTTPD_REQ_TYPE_GET ||
-    req->type == HTTPD_REQ_TYPE_HEAD) {
+  if (!req->hdr_parsed && (req->type == HTTPD_REQ_TYPE_GET ||
+    req->type == HTTPD_REQ_TYPE_HEAD)) {
     ret = httpd_purge_headers(req->sock);
 
     if (ret != kNoErr) {
@@ -428,8 +428,8 @@ int httpd_send_response(httpd_request_t *req, const char *first_line,
 	int ret;
 
 	/* Parse the header tags. This is valid only for GET or HEAD request */
-	if (req->type == HTTPD_REQ_TYPE_GET ||
-		req->type == HTTPD_REQ_TYPE_HEAD) {
+  if (!req->hdr_parsed && (req->type == HTTPD_REQ_TYPE_GET ||
+        req->type == HTTPD_REQ_TYPE_HEAD)) {
 		ret = httpd_purge_headers(req->sock);
 
 		if (ret != kNoErr) {
@@ -721,6 +721,22 @@ int httpd_wsgi(httpd_request_t *req_p)
 
 	/* Match found. So map the wsgi to this request */
 	req_p->wsgi = calls[match_index];
+	if (get_httpd_auth()) {
+		char *header_buf = malloc(HTTPD_MAX_MESSAGE);
+		if (!header_buf)
+			return -kInProgressErr;
+		ret = httpd_parse_hdr_tags(req_p, req_p->sock, header_buf,
+				HTTPD_MAX_MESSAGE);
+		free(header_buf);
+		if (ret != kNoErr)
+			return ret;
+		req_p->hdr_parsed = 1;
+		if (strcmp(req_p->authorization, get_httpd_auth()) != 0) {
+			httpd_send(req_p->sock, httpd_authrized,
+					strlen(httpd_authrized));
+			return HTTPD_DONE;
+		}
+	}
 	switch (req_p->type) {
 	case HTTPD_REQ_TYPE_HEAD:
 	case HTTPD_REQ_TYPE_GET:
