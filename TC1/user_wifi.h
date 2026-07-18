@@ -45,7 +45,6 @@ extern void WifiInit(void);
 extern void ApInit(bool use_defaul);
 extern void ApConfig(char* name, char* key);
 extern void WifiConnect(char* wifi_ssid, char* wifi_key);
-extern void WifiStartReconnect(bool allow_startup_ap);
 extern void WifiStartOnBoot(void);
 
 #endif

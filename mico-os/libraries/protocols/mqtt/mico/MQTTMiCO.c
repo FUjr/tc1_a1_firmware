@@ -319,6 +319,7 @@ int SSL_ConnectNetwork(Network* n, char* addr, int port, int ca_str_len, char* c
   if( retVal < 0 ) {
     mqtt_mico_log("setsockopt SO_SNDTIMEO error=%d.", retVal);
     close(n->my_socket);
+    n->my_socket = -1;
     return retVal;
   }
   mqtt_mico_log("setsockopt SO_SNDTIMEO=%dms ok.", nNetTimeout_ms);
@@ -327,6 +328,7 @@ int SSL_ConnectNetwork(Network* n, char* addr, int port, int ca_str_len, char* c
   if( retVal < 0 ) {
     mqtt_mico_log("setsockopt SO_RCVTIMEO error=%d.", retVal);
     close(n->my_socket);
+    n->my_socket = -1;
     return retVal;
   }
   mqtt_mico_log("setsockopt SO_RCVTIMEO=%dms ok.", nNetTimeout_ms);
@@ -346,6 +348,7 @@ int SSL_ConnectNetwork(Network* n, char* addr, int port, int ca_str_len, char* c
   if( retVal < 0 ) {
     mqtt_mico_log("connect error=%d.", retVal);
     close(n->my_socket);
+    n->my_socket = -1;
     return retVal;
   }
   mqtt_mico_log("socket connect ok.");
@@ -423,6 +426,7 @@ int ConnectNetwork(Network* n, char* addr, int port)
   if( retVal < 0 ) {
     mqtt_mico_log("setsockopt SO_SNDTIMEO error=%d.", retVal);
     close(n->my_socket);
+    n->my_socket = -1;
     return retVal;
   }
   mqtt_mico_log("setsockopt SO_SNDTIMEO=%dms ok.", nNetTimeout_ms);
@@ -431,6 +435,7 @@ int ConnectNetwork(Network* n, char* addr, int port)
   if( retVal < 0 ) {
     mqtt_mico_log("setsockopt SO_RCVTIMEO error=%d.", retVal);
     close(n->my_socket);
+    n->my_socket = -1;
     return retVal;
   }
   mqtt_mico_log("setsockopt SO_RCVTIMEO=%dms ok.", nNetTimeout_ms);
@@ -450,6 +455,7 @@ int ConnectNetwork(Network* n, char* addr, int port)
   if( retVal < 0 ) {
     mqtt_mico_log("connect error:[%d]", retVal);
     close(n->my_socket);
+    n->my_socket = -1;
     return retVal;
   }
   mqtt_mico_log("socket connect ok.");

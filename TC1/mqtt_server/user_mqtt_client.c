@@ -54,6 +54,8 @@ mico_queue_t mqtt_msg_send_queue = NULL;
 Client c;  // mqtt client object
 Network n;  // socket network for mqtt client
 volatile bool mqtt_thread_should_exit = false;
+static volatile bool mqtt_thread_running = false;
+static bool mqtt_worker_initialized = false;
 
 static mico_worker_thread_t mqtt_client_worker_thread; /* Worker thread to manage send/recv events */
 //static mico_timed_event_t mqtt_client_send_event;
@@ -71,7 +73,9 @@ static bool mqtt_cmd_starts_with(const char *cmd, const char *prefix)
 }
 
 void UserMqttTimerFunc(void *arg) {
-    LinkStatusTypeDef LinkStatus;
+    LinkStatusTypeDef LinkStatus = { 0 };
+
+    UNUSED_PARAMETER(arg);
     micoWlanGetLinkStatus(&LinkStatus);
     if (LinkStatus.is_connected != 1) {
         mico_stop_timer(&timer_handle);
@@ -107,12 +111,9 @@ void UserMqttTimerFunc(void *arg) {
 }
 
 OSStatus UserMqttDeInit(void) {
-    OSStatus err = kNoErr;
-
-    // 1. 闁荤姴娲弨閬嶆儑閹殿喚妫悹鎭掑妷閺屻倝姊洪鐔蜂壕闂?
     mqtt_thread_should_exit = true;
-
-    return err;
+    isconnect = false;
+    return kNoErr;
 }
 
 void clear_mqtt_msg_send_queue(void) {
@@ -130,8 +131,16 @@ return;
 /* Application entrance */
 OSStatus UserMqttInit(void) {
     OSStatus err = kNoErr;
-if(mqtt_msg_send_queue != NULL)
-    return err;
+
+    mico_rtos_suspend_all_thread();
+    if (mqtt_thread_running) {
+        mico_rtos_resume_all_thread();
+        return kNoErr;
+    }
+    mqtt_thread_running = true;
+    mqtt_thread_should_exit = false;
+    mico_rtos_resume_all_thread();
+
     sprintf(topic_set, MQTT_CLIENT_SUB_TOPIC1, str_mac);  // 婵炶揪缍€濞夋洟寮ˉ鐭–闂侀潻闄勫妯侯焽閸愨晜濯存繝濞惧亾閻犳劗鍠撻幏瀣箚瑜滃Σ鐢告煛瀹ュ懏绌块柣锔藉灩缁?
     sprintf(topic_state, MQTT_CLIENT_PUB_TOPIC, str_mac);
     //TODO size:0x800
@@ -141,25 +150,34 @@ if(mqtt_msg_send_queue != NULL)
             0xFF & (mqtt_lib_version >> 16), 0xFF & (mqtt_lib_version >> 8),
             0xFF & mqtt_lib_version);
 
-    /* create mqtt msg send queue */
-    err = mico_rtos_init_queue(&mqtt_msg_send_queue, "mqtt_msg_send_queue",
-                               sizeof(p_mqtt_send_msg_t),
-                               MAX_MQTT_SEND_QUEUE_SIZE);
-    require_noerr_action(err, exit, mqtt_log("ERROR: create mqtt msg send queue err=%d.", err));
+    if (mqtt_msg_send_queue == NULL) {
+        err = mico_rtos_init_queue(&mqtt_msg_send_queue, "mqtt_msg_send_queue",
+                                   sizeof(p_mqtt_send_msg_t),
+                                   MAX_MQTT_SEND_QUEUE_SIZE);
+        require_noerr_action(err, exit,
+                             mqtt_log("ERROR: create mqtt msg send queue err=%d.", err));
+    }
 
-    /* start mqtt client */
+    /* The receive worker must exist before the MQTT thread can dispatch to it. */
+    if (!mqtt_worker_initialized) {
+        err = mico_rtos_create_worker_thread(&mqtt_client_worker_thread,
+                                             MICO_APPLICATION_PRIORITY, 0x800, 5);
+        require_noerr_string(err, exit, "ERROR: Unable to start the mqtt client worker thread.");
+        mqtt_worker_initialized = true;
+    }
+
     err = mico_rtos_create_thread(NULL, MICO_APPLICATION_PRIORITY, "mqtt_client",
                                   (mico_thread_function_t) MqttClientThread,
                                   mqtt_thread_stack_size, 0);
-    require_noerr_string(err, exit, "ERROR: Unable to start the mqtt client thread.");
-
-    /* Create a worker thread for user handling MQTT data event  */
-    err = mico_rtos_create_worker_thread(&mqtt_client_worker_thread, MICO_APPLICATION_PRIORITY,
-                                         0x800, 5);
-    require_noerr_string(err, exit, "ERROR: Unable to start the mqtt client worker thread.");
+    if (err != kNoErr) goto exit;
 
     exit:
-    if (kNoErr != err && mqtt_msg_send_queue != NULL) {
+    if (kNoErr != err) {
+        mico_rtos_suspend_all_thread();
+        mqtt_thread_running = false;
+        mico_rtos_resume_all_thread();
+    }
+    if (kNoErr != err && !mqtt_worker_initialized && mqtt_msg_send_queue != NULL) {
         clear_mqtt_msg_send_queue();
         mico_rtos_deinit_queue(&mqtt_msg_send_queue);
         mqtt_msg_send_queue = NULL;
@@ -234,7 +252,7 @@ void MqttClientThread(mico_thread_arg_t arg) {
 
     int rc = -1;
     fd_set readfds;
-    struct timeval t = {0, MQTT_YIELD_TMIE * 1000};
+    bool timer_initialized = false;
 
     ssl_opts ssl_settings;
     MQTTPacket_connectData connectData = MQTTPacket_connectData_initializer;
@@ -243,6 +261,8 @@ void MqttClientThread(mico_thread_arg_t arg) {
     int msg_send_event_fd = -1;
     bool no_mqtt_msg_exchange = true;
 
+    UNUSED_PARAMETER(arg);
+
     mqtt_log("MQTT client thread started...");
 
     memset(&c, 0, sizeof(c));
@@ -250,11 +270,13 @@ void MqttClientThread(mico_thread_arg_t arg) {
 
     /* create msg send queue event fd */
     msg_send_event_fd = mico_create_event_fd(mqtt_msg_send_queue);
-    mico_init_timer(&timer_handle, 150, UserMqttTimerFunc, &arg);
-
     require_action(msg_send_event_fd >= 0, exit,
                    mqtt_log("ERROR: create msg send queue event fd failed!!!"));
-    mqtt_thread_should_exit = false;
+
+    err = mico_init_timer(&timer_handle, 150, UserMqttTimerFunc, NULL);
+    require_noerr_string(err, exit, "ERROR: Unable to initialize MQTT timer.");
+    timer_initialized = true;
+
     MQTT_start:
     clear_mqtt_msg_send_queue();
     UserMqttClientRelease(&c, &n);
@@ -262,7 +284,7 @@ void MqttClientThread(mico_thread_arg_t arg) {
     isconnect = false;
     /* 1. create network connection */
     ssl_settings.ssl_enable = false;
-    LinkStatusTypeDef LinkStatus;
+    LinkStatusTypeDef LinkStatus = { 0 };
     while (!mqtt_thread_should_exit) {
         isconnect = false;
         mico_rtos_thread_sleep(3);
@@ -281,6 +303,7 @@ void MqttClientThread(mico_thread_arg_t arg) {
 
         //mqtt_log("ERROR: MQTT network connect err=%d, reconnect after 3s...", rc);
     }
+    if (mqtt_thread_should_exit) goto exit;
     mqtt_log("MQTT network connect success!");
 
     /* 2. init mqtt client */
@@ -325,12 +348,18 @@ void MqttClientThread(mico_thread_arg_t arg) {
     registerMqttEvents();
     /* 5. client loop for recv msg && keepalive */
     while (!mqtt_thread_should_exit) {
+        int max_fd;
+        struct timeval t = { MQTT_YIELD_TMIE / 1000,
+                             (MQTT_YIELD_TMIE % 1000) * 1000 };
+
         isconnect = true;
         no_mqtt_msg_exchange = true;
         FD_ZERO(&readfds);
         FD_SET(c.ipstack->my_socket, &readfds);
         FD_SET(msg_send_event_fd, &readfds);
-        select(msg_send_event_fd + 1, &readfds, NULL, NULL, &t);
+        max_fd = c.ipstack->my_socket > msg_send_event_fd
+                 ? c.ipstack->my_socket : msg_send_event_fd;
+        select(max_fd + 1, &readfds, NULL, NULL, &t);
 
         /* recv msg from server */
         if (FD_ISSET(c.ipstack->my_socket, &readfds)) {
@@ -368,6 +397,8 @@ void MqttClientThread(mico_thread_arg_t arg) {
 
     MQTT_reconnect:
 
+    if (mqtt_thread_should_exit) goto exit;
+
 mqtt_log("Disconnect MQTT client, and reconnect after 5s, reason: mqtt_rc = %d, err = %d", rc, err);
 
     timer_status = 100;
@@ -378,12 +409,28 @@ mqtt_log("Disconnect MQTT client, and reconnect after 5s, reason: mqtt_rc = %d, 
     mico_rtos_thread_msleep(100);
     UserLedSet(-1);
     mico_rtos_thread_sleep(5);
+    if (mqtt_thread_should_exit) goto exit;
     goto MQTT_start;
 
 exit:
     isconnect = false;
     mqtt_log("EXIT: MQTT client exit with err = %d.", err);
+    if (p_send_msg) {
+        free(p_send_msg);
+        p_send_msg = NULL;
+    }
+    if (timer_initialized) {
+        mico_stop_timer(&timer_handle);
+        mico_deinit_timer(&timer_handle);
+    }
+    if (msg_send_event_fd >= 0) {
+        mico_delete_event_fd(msg_send_event_fd);
+    }
+    clear_mqtt_msg_send_queue();
     UserMqttClientRelease(&c, &n);
+    mico_rtos_suspend_all_thread();
+    mqtt_thread_running = false;
+    mico_rtos_resume_all_thread();
     mico_rtos_delete_thread(NULL); // 闂佺厧顨庢禍婊堝垂?
     return;
 }
