@@ -170,4 +170,4 @@ jobs:
         run: |
           gh release create "${TAG_NAME}" release/* \
             --title "${TAG_NAME}" \
-            --notes "TC1 firmware build ${TAG_NAME}"
+            --generate-notes
