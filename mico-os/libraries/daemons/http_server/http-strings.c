@@ -114,6 +114,7 @@ const char http_header_pragma_no_cache[] = "Pragma: no-cache\r\n";
 const char httpd_authrized[] = {
 "HTTP/1.1 401 Authorization Required\r\n"
 "Server: MySocket Server\r\n"
+"Connection: close\r\n"
 "WWW-Authenticate: Basic realm=\""MODEL"\"\r\n"
 "Content-Type: text/html\r\n"
 "Content-Length: 169\r\n\r\n"

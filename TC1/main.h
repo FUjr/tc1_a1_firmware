@@ -23,8 +23,9 @@
 
 #define ZTC1_NAME "TC1-%s"
 
-#define USER_CONFIG_VERSION 9
+#define USER_CONFIG_VERSION 10
 #define SETTING_MQTT_STRING_LENGTH_MAX 32 //必须4字节对齐。
+#define WEB_PASSWORD_LENGTH_MAX 32
 
 #define SOCKET_NAME_LENGTH   64
 #define SOCKET_NUM           6  //插座数量
@@ -68,6 +69,7 @@ typedef struct
     int power_led_enabled;
     pTimedTask task_top;
     struct TimedTask timed_tasks[MAX_TASK_NUM];
+    char web_password[WEB_PASSWORD_LENGTH_MAX + 1];
 } user_config_t;
 
 extern char rtc_init;

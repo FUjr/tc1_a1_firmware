@@ -37,6 +37,7 @@ void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
     userConfigDefault->mqtt_port = 0;
     userConfigDefault->mqtt_user[0] = 0;
     userConfigDefault->mqtt_password[0] = 0;
+    userConfigDefault->web_password[0] = 0;
     userConfigDefault->task_top = NULL;
     userConfigDefault->task_count = 0;
     userConfigDefault->mqtt_report_freq = 2;
@@ -183,6 +184,8 @@ int application_start(void) {
     err = UserRtcInit();
     require_noerr(err, exit);
     PowerInit();
+    httpd_auth_init(user_config->web_password[0] ? "admin" : "",
+                    user_config->web_password);
     AppHttpdStart(); // start http server thread
 
     UserLedSet(user_config->power_led_enabled);

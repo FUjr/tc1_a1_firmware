@@ -769,6 +769,53 @@ static int OtaStart(httpd_request_t *req) {
     return err;
 }
 
+static int HttpSetWebPassword(httpd_request_t *req) {
+    OSStatus err = kNoErr;
+    char password[WEB_PASSWORD_LENGTH_MAX + 2] = {0};
+
+    if (!req->hdr_parsed) {
+        char *header_buf = malloc(HTTPD_MAX_MESSAGE);
+        require_action(header_buf, exit, err = kNoMemoryErr);
+        err = httpd_parse_hdr_tags(req, req->sock, header_buf, HTTPD_MAX_MESSAGE);
+        free(header_buf);
+        require_noerr(err, exit);
+        req->hdr_parsed = 1;
+    }
+
+    if (req->body_nbytes > WEB_PASSWORD_LENGTH_MAX) {
+        send_http("PASSWORD_TOO_LONG", 17, exit, &err);
+        goto exit;
+    }
+    if (req->body_nbytes > 0) {
+        err = httpd_get_data(req, password, sizeof(password) - 1);
+        require_noerr(err, exit);
+    }
+
+    size_t length = strlen(password);
+    if (length != 0 && length < 8) {
+        send_http("PASSWORD_TOO_SHORT", 18, exit, &err);
+        goto exit;
+    }
+    for (size_t i = 0; i < length; i++) {
+        if ((unsigned char) password[i] < 0x20 ||
+            (unsigned char) password[i] > 0x7e) {
+            send_http("PASSWORD_INVALID", 16, exit, &err);
+            goto exit;
+        }
+    }
+    memcpy(user_config->web_password, password, length + 1);
+    err = mico_system_context_update(sys_config);
+    require_noerr(err, exit);
+    err = httpd_auth_init(user_config->web_password[0] ? "admin" : "",
+                          user_config->web_password);
+    require_noerr(err, exit);
+    send_http("OK", 2, exit, &err);
+
+exit:
+    memset(password, 0, sizeof(password));
+    return err;
+}
+
 const struct httpd_wsgi_call g_app_handlers[] = {
         {"/",                 HTTPD_HDR_DEFORT, 0,                             HttpGetIndexPage, NULL,                       NULL, NULL},
         {"/assets", HTTPD_HDR_ADD_SERVER |
@@ -791,6 +838,7 @@ const struct httpd_wsgi_call g_app_handlers[] = {
         {"/deviceName",       HTTPD_HDR_DEFORT, 0, NULL,                                              HttpSetDeviceName,     NULL, NULL},
         {"/buttonEvents",     HTTPD_HDR_DEFORT, 0,                             HttpGetButtonEvents,   HttpSetButtonEvent,    NULL, NULL},
         {"/ota/fileUpload",     HTTPD_HDR_DEFORT, 0,                             NULL,   HttpSetOTAFile,    NULL, NULL},
+        {"/auth/password",    HTTPD_HDR_DEFORT, 0,                             NULL,   HttpSetWebPassword, NULL, NULL},
 };
 
 static int g_app_handlers_no = sizeof(g_app_handlers) / sizeof(struct httpd_wsgi_call);

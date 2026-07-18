@@ -341,6 +341,13 @@ static int __httpd_parse_hdr_tags(char *data_p, int len,
     if (!strncasecmp(&data_p[sizeof(http_encoding) - 1],
                      HTTP_CHUNKED, sizeof(HTTP_CHUNKED) - 1))
       req_p->chunked = 1;
+  } else if (strncasecmp(data_p, "Authorization: Basic ", 21) == 0) {
+    char *value = data_p + 21;
+    size_t value_len = strcspn(value, "\r\n");
+    if (value_len > HTTPD_MAX_AUTH_LENGTH)
+      value_len = HTTPD_MAX_AUTH_LENGTH;
+    memcpy(req_p->authorization, value, value_len);
+    req_p->authorization[value_len] = 0;
   }
   return kNoErr;
 }

@@ -452,6 +452,7 @@ enum wm_httpd_errno {
  * The length of this line is 104 bytes
  */
 #define HTTPD_MAX_CONTENT_TYPE_LENGTH 128
+#define HTTPD_MAX_AUTH_LENGTH 64
 
 #define ISO_nl      0x0a
 #define ISO_cr      0x0d
@@ -547,6 +548,8 @@ typedef struct {
 	httpd_useragent_t agent;
 	/** The content type of the incoming HTTP Request */
 	char content_type[HTTPD_MAX_CONTENT_TYPE_LENGTH];
+	/** Base64 credentials from an HTTP Basic Authorization header */
+	char authorization[HTTPD_MAX_AUTH_LENGTH + 1];
 	/** True if "If-None-Match" header is present in the incoming
 	 * HTTP Request */
 	bool if_none_match;
@@ -1188,6 +1191,5 @@ char *get_httpd_auth( void );
  */
 //int httpd_use_tls_certificates(const httpd_tls_certs_t *httpd_tls_certs);
 #endif
-
 
 
