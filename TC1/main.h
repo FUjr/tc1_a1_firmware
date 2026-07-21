@@ -70,6 +70,7 @@ typedef struct
     pTimedTask task_top;
     struct TimedTask timed_tasks[MAX_TASK_NUM];
     char web_password[WEB_PASSWORD_LENGTH_MAX + 1];
+    uint16_t power_coefficient_x100;
 } user_config_t;
 
 extern char rtc_init;

@@ -28,7 +28,7 @@ mico_gpio_t Relay[Relay_NUM] = {Relay_0, Relay_1, Relay_2, Relay_3, Relay_4, Rel
 #define DEFAULT_SOCKET_NAME_FORMAT "\xE6\x8F\x92\xE5\xBA\xA7-%d"
 #define CORRUPTED_DEFAULT_SOCKET_NAME_FORMAT "\xE9\x8E\xBB\xE6\x8E\x91\xE9\xAA\x87-%d"
 
-static void migrateCorruptedDefaultSocketNames(void) {
+static bool migrateCorruptedDefaultSocketNames(void) {
     bool updated = false;
     char corrupted_name[SOCKET_NAME_LENGTH];
 
@@ -42,9 +42,16 @@ static void migrateCorruptedDefaultSocketNames(void) {
         }
     }
 
-    if (updated) {
-        mico_system_context_update(sys_config);
+    return updated;
+}
+
+static bool migratePowerCoefficient(void) {
+    if (user_config->power_coefficient_x100 < POWER_COEFFICIENT_MIN_X100 ||
+        user_config->power_coefficient_x100 > POWER_COEFFICIENT_MAX_X100) {
+        user_config->power_coefficient_x100 = POWER_COEFFICIENT_BL0937_X100;
+        return true;
     }
+    return false;
 }
 
 /* MICO system callback: Restore default configuration provided by application */
@@ -67,6 +74,7 @@ void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
     userConfigDefault->p_count_2_days_ago = 0;
     userConfigDefault->p_count_1_day_ago = 0;
     userConfigDefault->power_led_enabled = 1;
+    userConfigDefault->power_coefficient_x100 = POWER_COEFFICIENT_BL0937_X100;
     userConfigDefault->version = USER_CONFIG_VERSION;
     set_key_map(userConfigDefault->user,1, SWITCH_ALL_SOCKETS, NO_FUNCTION);
     for (int i = 2; i < 32; i++) {
@@ -188,7 +196,11 @@ int application_start(void) {
         require_noerr(err, exit);
     }
 
-    migrateCorruptedDefaultSocketNames();
+    bool config_updated = migrateCorruptedDefaultSocketNames();
+    config_updated |= migratePowerCoefficient();
+    if (config_updated) {
+        mico_system_context_update(sys_config);
+    }
 
     if (sys_config->micoSystemConfig.name[0] == 1) {
         sprintf(sys_config->micoSystemConfig.name, ZTC1_NAME, str_mac + 8);

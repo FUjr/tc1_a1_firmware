@@ -11,6 +11,14 @@ PowerRecord power_record = {1, {0}};
 char power_record_str[1101] = {0};
 float real_time_power = 0;
 
+float GetPowerCoefficient(void) {
+    return (float) user_config->power_coefficient_x100 / POWER_COEFFICIENT_SCALE;
+}
+
+float PowerPulseCountToKwh(uint32_t pulse_count) {
+    return GetPowerCoefficient() * pulse_count / 1000.0f / 36000.0f;
+}
+
 void SetPowerRecord(PowerRecord *pr, uint32_t pw) {
     pr->powers[(++pr->idx) % PW_NUM] = pw;
 }
@@ -55,12 +63,12 @@ static void PowerIrqHandler(void *arg) {
 
     int n = (spend_ns - past_ns % NS) / NS;
     n_1s += (float) (NS - irq_old % NS) / spend_ns;
-    real_time_power = 17.1 * n_1s;
+    real_time_power = GetPowerCoefficient() * n_1s;
     SetPowerRecord(&power_record, (int) real_time_power);
 
     int i = 0;
     for (; i < n; i++) {
-        real_time_power = 17.1 * NS / spend_ns;
+        real_time_power = GetPowerCoefficient() * NS / spend_ns;
         SetPowerRecord(&power_record, (int) real_time_power);
     }
     irq_old = past_ns;

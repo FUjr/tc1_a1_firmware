@@ -444,6 +444,37 @@
                 </div>
             </div>
 
+            <div class="page page2 mdl-cell mdl-cell--5-col demo-card-square mdl-card mdl-shadow--2dp"
+                 style="z-index: unset;">
+                <div class="mdl-card__title mdl-card--expand">
+                    <h2 class="mdl-card__title-text">计量芯片与系数</h2>
+                </div>
+                <div class="mdl-card__supporting-text">
+                    <form action="#">
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                            <select class="mdl-textfield__input" id="power_coefficient_preset">
+                                <option value="1710">BL0937 原机（17.10）</option>
+                                <option value="1395">BL0937B 替换（13.95 参考）</option>
+                                <option value="0">自定义</option>
+                            </select>
+                            <label class="mdl-textfield__label" for="power_coefficient_preset">计量芯片</label>
+                        </div>
+                        <div id="power_coefficient_custom"
+                             class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label" hidden>
+                            <input class="mdl-textfield__input" type="number" id="power_coefficient_value"
+                                   min="1" max="100" step="0.01">
+                            <label class="mdl-textfield__label" for="power_coefficient_value">自定义系数</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="mdl-card__actions mdl-card--border">
+                    <button type="button" id="power_coefficient_submit"
+                            class="mdl-button mdl-button--colored">
+                        保存
+                    </button>
+                </div>
+            </div>
+
             <div class="page page3 mdl-cell mdl-cell--5-col demo-card-event mdl-card mdl-shadow--2dp">
                 <table id="timed_task_tb" class="mdl-data-table mdl-js-data-table">
                     <tr>
@@ -912,6 +943,7 @@
     var mqtt_usr;
     var mqtt_pwd;
     var mqtt_freq;
+    var power_coefficient_x100 = 1710;
 
     $("#st-date").html((new Date()).Format("yyyy-MM-dd"));
 
@@ -989,6 +1021,13 @@
       mqtt_usr = status.mqtt_usr;
       mqtt_pwd = status.mqtt_pwd;
       mqtt_freq = status.reportFreq;
+      power_coefficient_x100 = status.powerCoefficientX100;
+      var coefficientPreset = power_coefficient_x100 == 1710 || power_coefficient_x100 == 1395
+                              ? power_coefficient_x100.toString() : "0";
+      $("#power_coefficient_preset").val(coefficientPreset);
+      $("#power_coefficient_value")[0].parentElement.MaterialTextfield.change(
+        (power_coefficient_x100 / 100).toFixed(2));
+      SetPowerCoefficientMode();
       $("#info_version").html(status.version);
       $("#info_ip").html(status.ip);
       $("#info_mask").html(status.mask);
@@ -1283,6 +1322,34 @@ componentHandler.upgradeDom();
       setReportFreq(seconds)
     });
 
+    function SetPowerCoefficientMode() {
+      var preset = $("#power_coefficient_preset").val();
+      $("#power_coefficient_custom")[0].hidden = preset != "0";
+      if (preset != "0") {
+        $("#power_coefficient_value")[0].parentElement.MaterialTextfield.change(
+          (parseInt(preset, 10) / 100).toFixed(2));
+      }
+    }
+
+    $("#power_coefficient_preset").on("change", SetPowerCoefficientMode);
+
+    $("#power_coefficient_submit").on("click", function() {
+      var preset = parseInt($("#power_coefficient_preset").val(), 10);
+      var coefficientX100 = preset || Math.round(parseFloat($("#power_coefficient_value").val()) * 100);
+      if (!isFinite(coefficientX100) || coefficientX100 < 100 || coefficientX100 > 10000) {
+        ShowToast("计量系数应在 1.00 到 100.00 之间");
+        return;
+      }
+      HttpPost("/power/coefficient", function (re) {
+        if (re == "OK") {
+          power_coefficient_x100 = coefficientX100;
+          ShowToast("计量系数已保存");
+        } else {
+          ShowToast(re);
+        }
+      }, coefficientX100.toString());
+    });
+
 
     //Quotation Marks
     function ContainQM(str) {
@@ -1353,12 +1420,14 @@ componentHandler.upgradeDom();
         }
         $("#uptime").html(power.up_time);
 
-        var w_v = (17.1 * power.p_count) / 1000 / 36000;
+        power_coefficient_x100 = power.powerCoefficientX100 || power_coefficient_x100;
+        var powerCoefficient = power_coefficient_x100 / 100;
+        var w_v = (powerCoefficient * power.p_count) / 1000 / 36000;
         w.innerHTML = w_v.toFixed(3);
-        var w_v_t = (17.1 * (power.p_count - power.p_count_1_day_ago)) / 1000 / 36000;
+        var w_v_t = (powerCoefficient * (power.p_count - power.p_count_1_day_ago)) / 1000 / 36000;
         w_v_t = w_v_t < 0 ? 0 : w_v_t;
         w_t.innerHTML = w_v_t.toFixed(3);
-        var w_v_y = (17.1 * (power.p_count_1_day_ago - power.p_count_2_days_ago)) / 1000 / 36000;
+        var w_v_y = (powerCoefficient * (power.p_count_1_day_ago - power.p_count_2_days_ago)) / 1000 / 36000;
         w_v_y = w_v_y < 0 ? 0 : w_v_y;
         w_y.innerHTML = w_v_y.toFixed(3);
         if (power.child_lock_enabled == 1) {
