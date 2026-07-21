@@ -185,7 +185,8 @@ static int HttpGetTc1Status(httpd_request_t *req) {
             MQTT_SERVER_USR, MQTT_SERVER_PWD,
             VERSION, ip_status.ip, ip_status.mask, ip_status.gateway, user_config->mqtt_report_freq,
             user_config->power_led_enabled, 0L, socket_names, childLockEnabled,
-            sys_config->micoSystemConfig.name, short_click_config);
+            sys_config->micoSystemConfig.name,
+            (unsigned int) user_config->power_coefficient_x100, short_click_config);
 
     OSStatus err = kNoErr;
     send_http(tc1_status, strlen(tc1_status), exit, &err);
@@ -420,7 +421,8 @@ static int HttpGetPowerInfo(httpd_request_t *req) {
     sprintf(power_info_json, POWER_INFO_JSON, sockets, power_record.idx, PW_NUM, p_count, powers,
             up_time, user_config->power_led_enabled, RelayOut() ? 1 : 0, socket_names,
             user_config->p_count_1_day_ago, user_config->p_count_2_days_ago, childLockEnabled,
-            sys_config->micoSystemConfig.name, short_click_config);
+            sys_config->micoSystemConfig.name,
+            (unsigned int) user_config->power_coefficient_x100, short_click_config);
     send_http(power_info_json, strlen(power_info_json), exit, &err);
     if (socket_names) free(socket_names);
     exit:
@@ -769,6 +771,31 @@ static int OtaStart(httpd_request_t *req) {
     return err;
 }
 
+static int HttpSetPowerCoefficient(httpd_request_t *req) {
+    OSStatus err = kNoErr;
+    char buf[16] = {0};
+    char extra;
+    int coefficient_x100;
+
+    err = httpd_get_data(req, buf, sizeof(buf) - 1);
+    require_noerr(err, exit);
+
+    if (sscanf(buf, "%d %c", &coefficient_x100, &extra) != 1 ||
+        coefficient_x100 < POWER_COEFFICIENT_MIN_X100 ||
+        coefficient_x100 > POWER_COEFFICIENT_MAX_X100) {
+        send_http("INVALID_COEFFICIENT", 19, exit, &err);
+        goto exit;
+    }
+
+    user_config->power_coefficient_x100 = (uint16_t) coefficient_x100;
+    err = mico_system_context_update(sys_config);
+    require_noerr(err, exit);
+    send_http("OK", 2, exit, &err);
+
+exit:
+    return err;
+}
+
 static int HttpSetWebPassword(httpd_request_t *req) {
     OSStatus err = kNoErr;
     char password[WEB_PASSWORD_LENGTH_MAX + 2] = {0};
@@ -838,6 +865,7 @@ const struct httpd_wsgi_call g_app_handlers[] = {
         {"/deviceName",       HTTPD_HDR_DEFORT, 0, NULL,                                              HttpSetDeviceName,     NULL, NULL},
         {"/buttonEvents",     HTTPD_HDR_DEFORT, 0,                             HttpGetButtonEvents,   HttpSetButtonEvent,    NULL, NULL},
         {"/ota/fileUpload",     HTTPD_HDR_DEFORT, 0,                             NULL,   HttpSetOTAFile,    NULL, NULL},
+        {"/power/coefficient", HTTPD_HDR_DEFORT, 0, NULL,                                              HttpSetPowerCoefficient, NULL, NULL},
         {"/auth/password",    HTTPD_HDR_DEFORT, 0,                             NULL,   HttpSetWebPassword, NULL, NULL},
 };
 

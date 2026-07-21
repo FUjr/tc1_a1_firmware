@@ -68,10 +68,11 @@
     'socketNames':'%s',\
     'child_lock_enabled':%d,\
     'deviceName':'%s',\
+    'powerCoefficientX100':%u,\
     'btnClicks':%s\
 }"
 
-#define POWER_INFO_JSON "{'sockets':'%s','idx':%d,'len':%d,'p_count':%ld,'powers':[%s],'up_time':'%s','led_enabled':%d,'total_switch_on':%d,'socketNames':'%s','p_count_1_day_ago':%d,'p_count_2_days_ago':%d,'child_lock_enabled':%d,'deviceName':'%s','btnClicks':%s}"
+#define POWER_INFO_JSON "{'sockets':'%s','idx':%d,'len':%d,'p_count':%ld,'powers':[%s],'up_time':'%s','led_enabled':%d,'total_switch_on':%d,'socketNames':'%s','p_count_1_day_ago':%d,'p_count_2_days_ago':%d,'child_lock_enabled':%d,'deviceName':'%s','powerCoefficientX100':%u,'btnClicks':%s}"
 
 extern int AppHttpdStart(void);
 

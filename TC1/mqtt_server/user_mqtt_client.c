@@ -919,12 +919,18 @@ char topic_buf[128] = {0};
 char send_buf[128] = {0};
 
 extern void UserMqttHassPower(void) {
+    uint32_t today_count = p_count >= (uint32_t) user_config->p_count_1_day_ago
+                           ? p_count - (uint32_t) user_config->p_count_1_day_ago : 0;
+    uint32_t yesterday_count = user_config->p_count_1_day_ago >= user_config->p_count_2_days_ago
+                               ? (uint32_t) (user_config->p_count_1_day_ago -
+                                            user_config->p_count_2_days_ago) : 0;
+
     sprintf(topic_buf, "homeassistant/sensor/%s/power/state", str_mac);
     sprintf(send_buf, "{\"power\":\"%.3f\"}", real_time_power / 10);
     UserMqttSendTopic(topic_buf, send_buf, 0);
 
     sprintf(topic_buf, "homeassistant/sensor/%s/powerConsumption/state", str_mac);
-    sprintf(send_buf, "{\"powerConsumption\":\"%.3f\"}", (17.1 * p_count) / 1000 / 36000);
+    sprintf(send_buf, "{\"powerConsumption\":\"%.3f\"}", PowerPulseCountToKwh(p_count));
     UserMqttSendTopic(topic_buf, send_buf, 0);
 
     //闁荤姳绶ょ槐鏇㈡偩閼姐倕瀵查柤濮愬€楅崺鐘诲级閳哄倸濮屾い銏″灴瀵噣宕奸弴鐕傜吹
@@ -944,21 +950,13 @@ extern void UserMqttHassPower(void) {
 
 //    tc1_log("p_count %ld, p_count_1_day_ago %ld ,p_count_2_days_ago %ld, result %ld",p_count,user_config->p_count_1_day_ago,user_config->p_count_2_days_ago,((p_count-user_config->p_count_1_day_ago)<0?0:(p_count-user_config->p_count_1_day_ago)));
     sprintf(topic_buf, "homeassistant/sensor/%s/powerConsumptionToday/state", str_mac);
-    sprintf(send_buf, "{\"powerConsumptionToday\":\"%.3f\"}", (17.1 * ((p_count -
-                                                                        user_config->p_count_1_day_ago) <
-                                                                       0 ? 0 : (p_count -
-                                                                                user_config->p_count_1_day_ago))) /
-                                                              1000 / 36000);
+    sprintf(send_buf, "{\"powerConsumptionToday\":\"%.3f\"}",
+            PowerPulseCountToKwh(today_count));
     UserMqttSendTopic(topic_buf, send_buf, 0);
 
     sprintf(topic_buf, "homeassistant/sensor/%s/powerConsumptionYesterday/state", str_mac);
-    sprintf(send_buf, "{\"powerConsumptionYesterday\":\"%.3f\"}", (17.1 *
-                                                                   ((user_config->p_count_1_day_ago -
-                                                                     user_config->p_count_2_days_ago) <
-                                                                    0 ? 0 : (
-                                                                            user_config->p_count_1_day_ago -
-                                                                            user_config->p_count_2_days_ago))) /
-                                                                  1000 / 36000);
+    sprintf(send_buf, "{\"powerConsumptionYesterday\":\"%.3f\"}",
+            PowerPulseCountToKwh(yesterday_count));
     UserMqttSendTopic(topic_buf, send_buf, 0);
 }
 
