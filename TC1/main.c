@@ -1,6 +1,7 @@
 #include "main.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include "string.h"
 #include "time.h"
 #include "unistd.h"
 #include "TimeUtils.h"
@@ -23,6 +24,28 @@ system_config_t *sys_config;
 user_config_t *user_config;
 
 mico_gpio_t Relay[Relay_NUM] = {Relay_0, Relay_1, Relay_2, Relay_3, Relay_4, Relay_5};
+
+#define DEFAULT_SOCKET_NAME_FORMAT "\xE6\x8F\x92\xE5\xBA\xA7-%d"
+#define CORRUPTED_DEFAULT_SOCKET_NAME_FORMAT "\xE9\x8E\xBB\xE6\x8E\x91\xE9\xAA\x87-%d"
+
+static void migrateCorruptedDefaultSocketNames(void) {
+    bool updated = false;
+    char corrupted_name[SOCKET_NAME_LENGTH];
+
+    for (int i = 0; i < SOCKET_NUM; i++) {
+        snprintf(corrupted_name, sizeof(corrupted_name),
+                 CORRUPTED_DEFAULT_SOCKET_NAME_FORMAT, i + 1);
+        if (strcmp(user_config->socket_names[i], corrupted_name) == 0) {
+            snprintf(user_config->socket_names[i], SOCKET_NAME_LENGTH,
+                     DEFAULT_SOCKET_NAME_FORMAT, i + 1);
+            updated = true;
+        }
+    }
+
+    if (updated) {
+        mico_system_context_update(sys_config);
+    }
+}
 
 /* MICO system callback: Restore default configuration provided by application */
 void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
@@ -59,7 +82,8 @@ void appRestoreDefault_callback(void *const user_config_data, uint32_t size) {
 
     for (int i = 0; i < SOCKET_NUM; i++) {
         userConfigDefault->socket_status[i] = 1;
-        snprintf(userConfigDefault->socket_names[i], SOCKET_NAME_LENGTH, "鎻掑骇-%d", i + 1);
+        snprintf(userConfigDefault->socket_names[i], SOCKET_NAME_LENGTH,
+                 DEFAULT_SOCKET_NAME_FORMAT, i + 1);
     }
     for (int i = 0; i < MAX_TASK_NUM; i++) {
         userConfigDefault->timed_tasks[i].on_use = false;
@@ -163,6 +187,8 @@ int application_start(void) {
         err = mico_system_context_restore(sys_config);
         require_noerr(err, exit);
     }
+
+    migrateCorruptedDefaultSocketNames();
 
     if (sys_config->micoSystemConfig.name[0] == 1) {
         sprintf(sys_config->micoSystemConfig.name, ZTC1_NAME, str_mac + 8);
